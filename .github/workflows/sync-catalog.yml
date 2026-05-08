@@ -26,7 +26,8 @@ jobs:
         env:
           BARTSPARTS_FEED_URL: ${{ secrets.BARTSPARTS_FEED_URL }}
           BARTSPARTS_BRANDS: ${{ vars.BARTSPARTS_BRANDS || 'john-deere,fendt,case-ih,new-holland,claas,krone' }}
-          BARTSPARTS_PAGES_PER_BRAND: ${{ vars.BARTSPARTS_PAGES_PER_BRAND }}
+          BARTSPARTS_MAX_PAGES: ${{ vars.BARTSPARTS_MAX_PAGES || '500' }}
+          BARTSPARTS_REQUEST_DELAY_MS: ${{ vars.BARTSPARTS_REQUEST_DELAY_MS || '1500' }}
           BARTSPARTS_LIMIT: ${{ vars.BARTSPARTS_LIMIT }}
         run: node tools/sync-bartsparts.mjs
 

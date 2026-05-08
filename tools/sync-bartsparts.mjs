@@ -11,8 +11,9 @@ const brandSlugs = (process.env.BARTSPARTS_BRANDS || allowedBrandSlugs.join(",")
   .map((item) => item.trim())
   .filter((item) => allowedBrandSlugs.includes(item))
   .filter(Boolean);
-const pagesPerBrand = Number(process.env.BARTSPARTS_PAGES_PER_BRAND || 2);
-const limit = Number(process.env.BARTSPARTS_LIMIT || 120);
+const maxPagesPerBrand = getNumberEnv("BARTSPARTS_MAX_PAGES", getNumberEnv("BARTSPARTS_PAGES_PER_BRAND", 500));
+const limit = getNumberEnv("BARTSPARTS_LIMIT", 0);
+const requestDelayMs = getNumberEnv("BARTSPARTS_REQUEST_DELAY_MS", 1500);
 
 const categoryWords = [
   ["hydraulic", ["HYDRAULIC", "CYLINDER", "HOSE", "PUMP", "VALVE", "STEERING"]],
@@ -21,6 +22,11 @@ const categoryWords = [
 ];
 
 const visuals = ["green", "amber", "blue", "red"];
+
+function getNumberEnv(key, fallback) {
+  const value = Number(process.env[key]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function stripTags(value) {
   return value.replace(/<[^>]+>/g, " ");
@@ -120,12 +126,16 @@ function isAllowedBrand(product) {
 async function fetchText(url) {
   const response = await fetch(url, {
     headers: {
-      "user-agent": "AgroDetal catalog sync (+https://razilkik-ops.github.io/agro/)"
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "accept-language": "ru,en;q=0.9",
+      "user-agent": "Mozilla/5.0 (compatible; AgroDetalCatalogSync/1.0; +https://razilkik-ops.github.io/agro/)"
     }
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+    const error = new Error(`Failed to fetch ${url}: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return response.text();
@@ -188,25 +198,53 @@ async function importFromFeed(url) {
 
 async function importFromPages() {
   const products = [];
-  const perBrandLimit = Math.max(1, Math.ceil(limit / brandSlugs.length));
+  const perBrandLimit = limit > 0 ? Math.max(1, Math.ceil(limit / brandSlugs.length)) : Infinity;
 
   for (const brandSlug of brandSlugs) {
     const brandProducts = [];
+    const seenUrls = new Set();
 
-    for (let page = 1; page <= pagesPerBrand; page += 1) {
+    for (let page = 1; page <= maxPagesPerBrand; page += 1) {
       if (brandProducts.length >= perBrandLimit) break;
 
       const url = page === 1 ? `${baseUrl}/${brandSlug}/` : `${baseUrl}/${brandSlug}/?page=${page}`;
-      const html = await fetchText(url);
-      brandProducts.push(...parseProductsFromHtml(html, url));
+      let html = "";
 
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 600));
+      try {
+        html = await fetchText(url);
+      } catch (error) {
+        if (error.status === 403 || error.status === 404) {
+          console.log(`${brandSlug}: stopped at page ${page} (${error.status})`);
+          break;
+        }
+
+        throw error;
+      }
+
+      const pageProducts = parseProductsFromHtml(html, url);
+      const newProducts = pageProducts.filter((product) => {
+        if (seenUrls.has(product.url)) {
+          return false;
+        }
+
+        seenUrls.add(product.url);
+        return true;
+      });
+
+      if (pageProducts.length === 0 || newProducts.length === 0) {
+        console.log(`${brandSlug}: stopped at page ${page}`);
+        break;
+      }
+
+      brandProducts.push(...newProducts);
+
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, requestDelayMs));
     }
 
     products.push(...brandProducts.slice(0, perBrandLimit));
   }
 
-  return products.slice(0, limit);
+  return limit > 0 ? products.slice(0, limit) : products;
 }
 
 async function main() {
