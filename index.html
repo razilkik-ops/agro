@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>АгроДеталь Маркет | Запчасти для сельхозтехники</title>
+    <meta
+      name="description"
+      content="Современный интернет-магазин запчастей для тракторов, комбайнов, сеялок, пресс-подборщиков и другой сельхозтехники."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="АгроДеталь Маркет">
+        <span class="brand-mark">АД</span>
+        <span>
+          <strong>АгроДеталь</strong>
+          <small>маркет запчастей</small>
+        </span>
+      </a>
+      <nav class="main-nav" aria-label="Основная навигация">
+        <a href="#catalog">Каталог</a>
+        <a href="#selection">Подбор</a>
+        <a href="#delivery">Доставка</a>
+        <a href="#contacts">Контакты</a>
+      </nav>
+      <form class="header-search" id="headerSearchForm" role="search">
+        <i data-lucide="search"></i>
+        <input
+          id="headerSearch"
+          data-product-search
+          type="search"
+          placeholder="Поиск запчастей"
+          autocomplete="off"
+        />
+      </form>
+      <div class="header-actions">
+        <a class="phone-link" href="tel:+375291234567">+375 29 123-45-67</a>
+        <a class="messenger-link" href="https://wa.me/375291234567" aria-label="Написать в WhatsApp">
+          <i data-lucide="message-circle"></i>
+        </a>
+        <button class="icon-button" id="cartOpen" type="button" aria-label="Корзина">
+          <i data-lucide="shopping-cart"></i>
+          <span class="cart-count" id="cartCount">0</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-label="Запчасти для сельхозтехники">
+        <div class="hero-media" aria-hidden="true"></div>
+        <div class="hero-shade" aria-hidden="true"></div>
+        <div class="hero-content">
+          <p class="eyebrow">Оригинальные и проверенные аналоги</p>
+          <h1>Запчасти для сельхоз<wbr />техники</h1>
+          <p class="hero-copy">
+            Фильтры, ремни, подшипники, гидравлика и узлы ходовой для тракторов,
+            комбайнов и посевной техники с быстрым подбором по модели.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#catalog">
+              <i data-lucide="package-search"></i>
+              Смотреть каталог
+            </a>
+            <a class="button secondary" href="#selection">
+              <i data-lucide="wrench"></i>
+              Подобрать деталь
+            </a>
+          </div>
+          <dl class="hero-stats">
+            <div>
+              <dt>12 800+</dt>
+              <dd>позиций на складе</dd>
+            </div>
+            <div>
+              <dt>24 ч</dt>
+              <dd>отгрузка по Минску и РБ</dd>
+            </div>
+            <div>
+              <dt>98%</dt>
+              <dd>точность подбора по VIN</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="quick-panel" aria-label="Быстрый подбор">
+        <form class="search-form">
+          <label for="quickSearch">Найти запчасть</label>
+          <div class="search-control">
+            <i data-lucide="search"></i>
+            <input
+              id="quickSearch"
+              data-product-search
+              type="search"
+              placeholder="Введите артикул, название или модель техники"
+              autocomplete="off"
+            />
+          </div>
+        </form>
+        <div class="quick-contact">
+          <i data-lucide="headphones"></i>
+          <span>Менеджер проверит совместимость перед оплатой</span>
+        </div>
+      </section>
+
+      <section class="section" id="catalog">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Каталог</p>
+            <h2>Популярные категории</h2>
+          </div>
+          <div class="filters" role="group" aria-label="Фильтр категорий">
+            <button class="filter-button is-active" type="button" data-filter="all">Все</button>
+            <button class="filter-button" type="button" data-filter="tractor">Тракторы</button>
+            <button class="filter-button" type="button" data-filter="combine">Комбайны</button>
+            <button class="filter-button" type="button" data-filter="hydraulic">Гидравлика</button>
+          </div>
+        </div>
+
+        <div class="catalog-tools">
+          <label class="sort-control">
+            <i data-lucide="arrow-up-down"></i>
+            <select id="sortSelect" aria-label="Сортировка товаров">
+              <option value="default">Сначала популярные</option>
+              <option value="price-asc">Цена: по возрастанию</option>
+              <option value="price-desc">Цена: по убыванию</option>
+              <option value="name">По названию</option>
+            </select>
+          </label>
+          <div class="catalog-actions">
+            <button class="button ghost compact" id="favoritesOnly" type="button">
+              <i data-lucide="heart"></i>
+              Избранное
+              <span id="favoritesCount">0</span>
+            </button>
+            <button class="button ghost compact" id="compareOpen" type="button">
+              <i data-lucide="scale"></i>
+              Сравнить
+              <span id="compareCount">0</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="product-grid" id="productGrid">
+          <article
+            class="product-card"
+            data-id="filters-mtz"
+            data-category="tractor"
+            data-name="Комплект фильтров МТЗ"
+            data-price="86"
+            data-sku="MTZ-FLT-082"
+            data-stock="42 комплекта на складе"
+            data-visual="green"
+            data-description="Комплект для планового обслуживания тракторов МТЗ: масляный, топливный и воздушный фильтр. Подходит для сезонного ТО и быстрой замены перед выходом техники в поле."
+            data-compatible="МТЗ 80, МТЗ 82, МТЗ 82.1, Беларус 920"
+            data-weight="1.8 кг"
+            data-warranty="30 дней"
+          >
+            <div class="product-visual green">
+              <i data-lucide="filter"></i>
+            </div>
+            <div class="product-info">
+              <div class="card-tools">
+                <button class="mini-tool favorite-button" type="button" aria-label="В избранное">
+                  <i data-lucide="heart"></i>
+                </button>
+                <button class="mini-tool compare-button" type="button" aria-label="Добавить к сравнению">
+                  <i data-lucide="scale"></i>
+                </button>
+              </div>
+              <span class="tag">В наличии</span>
+              <h3>Комплект фильтров МТЗ</h3>
+              <p>Масляный, топливный и воздушный фильтр для планового ТО.</p>
+              <div class="product-bottom">
+                <strong>от 86 BYN</strong>
+                <div class="product-actions">
+                  <button class="icon-button details-button" type="button" aria-label="Посмотреть товар">
+                    <i data-lucide="eye"></i>
+                  </button>
+                  <button class="icon-button add-button" type="button" aria-label="Добавить в корзину">
+                    <i data-lucide="plus"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="product-card"
+            data-id="combine-belt"
+            data-category="combine"
+            data-name="Ремень вариатора комбайна"
+            data-price="142"
+            data-sku="VAR-BLT-1450"
+            data-stock="18 штук на складе"
+            data-visual="amber"
+            data-description="Усиленный приводной ремень с повышенной стойкостью к растяжению и нагреву. Предназначен для сезонных нагрузок жатки и молотильного блока."
+            data-compatible="Гомсельмаш, Claas Dominator, John Deere 9500, аналоги по размеру"
+            data-weight="2.4 кг"
+            data-warranty="60 дней"
+          >
+            <div class="product-visual amber">
+              <i data-lucide="rotate-cw-square"></i>
+            </div>
+            <div class="product-info">
+              <div class="card-tools">
+                <button class="mini-tool favorite-button" type="button" aria-label="В избранное">
+                  <i data-lucide="heart"></i>
+                </button>
+                <button class="mini-tool compare-button" type="button" aria-label="Добавить к сравнению">
+                  <i data-lucide="scale"></i>
+                </button>
+              </div>
+              <span class="tag">Хит сезона</span>
+              <h3>Ремень вариатора комбайна</h3>
+              <p>Усиленный ремень для приводов жатки и молотильного блока.</p>
+              <div class="product-bottom">
+                <strong>от 142 BYN</strong>
+                <div class="product-actions">
+                  <button class="icon-button details-button" type="button" aria-label="Посмотреть товар">
+                    <i data-lucide="eye"></i>
+                  </button>
+                  <button class="icon-button add-button" type="button" aria-label="Добавить в корзину">
+                    <i data-lucide="plus"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="product-card"
+            data-id="hydraulic-cylinder"
+            data-category="hydraulic"
+            data-name="Гидроцилиндр навески"
+            data-price="318"
+            data-sku="HYD-CYL-80"
+            data-stock="9 штук на складе"
+            data-visual="blue"
+            data-description="Гидроцилиндр для навесного оборудования и фронтальных погрузчиков. Перед отправкой проверяется ход штока, герметичность и рабочее давление."
+            data-compatible="МТЗ, Амкодор, фронтальные погрузчики, навесное оборудование"
+            data-weight="8.7 кг"
+            data-warranty="6 месяцев"
+          >
+            <div class="product-visual blue">
+              <i data-lucide="activity"></i>
+            </div>
+            <div class="product-info">
+              <div class="card-tools">
+                <button class="mini-tool favorite-button" type="button" aria-label="В избранное">
+                  <i data-lucide="heart"></i>
+                </button>
+                <button class="mini-tool compare-button" type="button" aria-label="Добавить к сравнению">
+                  <i data-lucide="scale"></i>
+                </button>
+              </div>
+              <span class="tag">Гарантия</span>
+              <h3>Гидроцилиндр навески</h3>
+              <p>Для тракторов и погрузчиков, проверка давления перед отправкой.</p>
+              <div class="product-bottom">
+                <strong>от 318 BYN</strong>
+                <div class="product-actions">
+                  <button class="icon-button details-button" type="button" aria-label="Посмотреть товар">
+                    <i data-lucide="eye"></i>
+                  </button>
+                  <button class="icon-button add-button" type="button" aria-label="Добавить в корзину">
+                    <i data-lucide="plus"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="product-card"
+            data-id="hub-bearing"
+            data-category="tractor"
+            data-name="Подшипник ступицы"
+            data-price="39"
+            data-sku="BRG-HUB-208"
+            data-stock="64 штуки на складе"
+            data-visual="red"
+            data-description="Ступичный подшипник для ремонта ходовой части. Подбирается по размеру, посадочному месту, артикулу или серийному номеру техники."
+            data-compatible="МТЗ, прицепная техника, культиваторы, дисковые бороны"
+            data-weight="0.6 кг"
+            data-warranty="90 дней"
+          >
+            <div class="product-visual red">
+              <i data-lucide="disc-3"></i>
+            </div>
+            <div class="product-info">
+              <div class="card-tools">
+                <button class="mini-tool favorite-button" type="button" aria-label="В избранное">
+                  <i data-lucide="heart"></i>
+                </button>
+                <button class="mini-tool compare-button" type="button" aria-label="Добавить к сравнению">
+                  <i data-lucide="scale"></i>
+                </button>
+              </div>
+              <span class="tag">Оригинал</span>
+              <h3>Подшипник ступицы</h3>
+              <p>Подбор по размеру, артикулу и серийному номеру техники.</p>
+              <div class="product-bottom">
+                <strong>от 39 BYN</strong>
+                <div class="product-actions">
+                  <button class="icon-button details-button" type="button" aria-label="Посмотреть товар">
+                    <i data-lucide="eye"></i>
+                  </button>
+                  <button class="icon-button add-button" type="button" aria-label="Добавить в корзину">
+                    <i data-lucide="plus"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div class="empty-results" id="emptyResults">
+          <i data-lucide="search-x"></i>
+          <h3>Ничего не найдено</h3>
+          <p>Попробуйте другой артикул, модель техники или сбросьте фильтр избранного.</p>
+        </div>
+      </section>
+
+      <section class="section selection-section" id="selection">
+        <div class="selection-copy">
+          <p class="eyebrow">Подбор без ошибок</p>
+          <h2>Найдём деталь по модели, артикулу или фото шильдика</h2>
+          <p>
+            Укажите технику и задачу. Мы проверим совместимость, предложим оригинал
+            и надёжный аналог, а затем зарезервируем позицию на складе.
+          </p>
+          <div class="feature-list">
+            <span><i data-lucide="scan-line"></i> Подбор по VIN и серийному номеру</span>
+            <span><i data-lucide="shield-check"></i> Возврат, если деталь не подошла</span>
+            <span><i data-lucide="truck"></i> Доставка по Беларуси и самовывоз</span>
+          </div>
+        </div>
+        <form class="request-form" id="requestForm">
+          <label>
+            Тип техники
+            <select name="machine">
+              <option>Трактор</option>
+              <option>Комбайн</option>
+              <option>Сеялка</option>
+              <option>Пресс-подборщик</option>
+            </select>
+          </label>
+          <label>
+            Модель или артикул
+            <input
+              name="model"
+              type="text"
+              placeholder="Например: МТЗ 82.1, John Deere 9500"
+              required
+            />
+          </label>
+          <label>
+            Что нужно заменить
+            <textarea
+              name="problem"
+              rows="4"
+              placeholder="Опишите узел, симптом или нужную деталь"
+              required
+            ></textarea>
+          </label>
+          <button class="button primary" type="submit">
+            <i data-lucide="send"></i>
+            Отправить заявку
+          </button>
+        </form>
+      </section>
+
+      <section class="benefits" id="delivery">
+        <article>
+          <i data-lucide="warehouse"></i>
+          <h3>Склад рядом</h3>
+          <p>Ходовые позиции держим в наличии, редкие детали привозим под заказ.</p>
+        </article>
+        <article>
+          <i data-lucide="badge-check"></i>
+          <h3>Проверка качества</h3>
+          <p>Каждая партия проходит входной контроль и сверку артикула.</p>
+        </article>
+        <article>
+          <i data-lucide="route"></i>
+          <h3>Быстрая логистика</h3>
+          <p>Курьер, транспортные компании и срочная отправка в сезон.</p>
+        </article>
+      </section>
+
+      <section class="contacts" id="contacts">
+        <div>
+          <p class="eyebrow">Контакты</p>
+          <h2>Поможем вернуть технику в поле</h2>
+          <p>Минск, складской комплекс «АгроЛогистик», пн-сб 8:30-19:00.</p>
+          <div class="contact-cards">
+            <a href="tel:+375291234567">
+              <i data-lucide="phone"></i>
+              <span>+375 29 123-45-67</span>
+            </a>
+            <a href="mailto:sales@agrodetal.by">
+              <i data-lucide="mail"></i>
+              <span>sales@agrodetal.by</span>
+            </a>
+            <a href="https://wa.me/375291234567">
+              <i data-lucide="message-circle"></i>
+              <span>WhatsApp / Viber</span>
+            </a>
+            <span>
+              <i data-lucide="map-pin"></i>
+              <span>Минск, склад «АгроЛогистик»</span>
+            </span>
+          </div>
+        </div>
+        <div class="contact-actions">
+          <a class="button primary" href="tel:+375291234567">
+            <i data-lucide="phone"></i>
+            Позвонить
+          </a>
+          <a class="button secondary light" href="mailto:sales@agrodetal.by">
+            <i data-lucide="mail"></i>
+            sales@agrodetal.by
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
+      <div class="cart-panel" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+        <div class="cart-head">
+          <div>
+            <p class="eyebrow">Корзина</p>
+            <h2 id="cartTitle">Ваш заказ</h2>
+          </div>
+          <button class="icon-button" id="cartClose" type="button" aria-label="Закрыть корзину">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="cart-list" id="cartList"></div>
+
+        <div class="cart-empty" id="cartEmpty">
+          <i data-lucide="shopping-bag"></i>
+          <h3>Корзина пока пустая</h3>
+          <p>Добавьте запчасти из каталога, а затем отправьте заявку менеджеру.</p>
+        </div>
+
+        <div class="cart-summary">
+          <div>
+            <span>Итого</span>
+            <strong id="cartTotal">0 BYN</strong>
+          </div>
+          <small>Цена указана «от». Менеджер подтвердит наличие и совместимость.</small>
+        </div>
+
+        <form class="checkout-form" id="checkoutForm">
+          <label>
+            Имя
+            <input name="name" type="text" placeholder="Как к вам обращаться" required />
+          </label>
+          <label>
+            Телефон
+            <input name="phone" type="tel" placeholder="+375 29 123-45-67" required />
+          </label>
+          <button class="button primary" type="submit">
+            <i data-lucide="send"></i>
+            Отправить заказ
+          </button>
+          <button class="button ghost" id="cartClear" type="button">Очистить корзину</button>
+        </form>
+      </div>
+    </aside>
+
+    <section class="product-modal" id="productModal" aria-hidden="true">
+      <div class="product-modal-card" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+        <button class="icon-button modal-close" id="detailClose" type="button" aria-label="Закрыть карточку товара">
+          <i data-lucide="x"></i>
+        </button>
+        <div class="detail-visual" id="detailVisual">
+          <i data-lucide="package"></i>
+        </div>
+        <div class="detail-content">
+          <p class="eyebrow" id="detailSku">Артикул</p>
+          <h2 id="detailTitle">Название товара</h2>
+          <p id="detailDescription"></p>
+          <dl class="detail-meta">
+            <div>
+              <dt>Совместимость</dt>
+              <dd id="detailCompatible"></dd>
+            </div>
+            <div>
+              <dt>Наличие</dt>
+              <dd id="detailStock"></dd>
+            </div>
+          </dl>
+          <div class="detail-bottom">
+            <strong id="detailPrice">0 BYN</strong>
+            <button class="button primary" id="detailAdd" type="button">
+              <i data-lucide="shopping-cart"></i>
+              Добавить в корзину
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="compare-modal" id="compareModal" aria-hidden="true">
+      <div class="compare-card" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
+        <div class="compare-head">
+          <div>
+            <p class="eyebrow">Сравнение</p>
+            <h2 id="compareTitle">Сравнить запчасти</h2>
+          </div>
+          <button class="icon-button" id="compareClose" type="button" aria-label="Закрыть сравнение">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="compare-table-wrap">
+          <table class="compare-table" id="compareTable"></table>
+        </div>
+        <div class="compare-empty" id="compareEmpty">
+          <i data-lucide="scale"></i>
+          <h3>Добавьте товары для сравнения</h3>
+          <p>Нажмите иконку весов на карточках, чтобы сравнить цену, наличие, гарантию и совместимость.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <footer class="site-footer">
+      <span>© 2026 АгроДеталь Маркет</span>
+      <span>+375 29 123-45-67 · sales@agrodetal.by</span>
+    </footer>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
