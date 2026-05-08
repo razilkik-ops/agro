@@ -1,0 +1,44 @@
+name: Sync BartsParts catalog
+
+on:
+  schedule:
+    - cron: "18 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync catalog
+        env:
+          BARTSPARTS_FEED_URL: ${{ secrets.BARTSPARTS_FEED_URL }}
+          BARTSPARTS_BRANDS: ${{ vars.BARTSPARTS_BRANDS || 'john-deere,fendt,case-ih,new-holland,claas,krone' }}
+          BARTSPARTS_PAGES_PER_BRAND: ${{ vars.BARTSPARTS_PAGES_PER_BRAND }}
+          BARTSPARTS_LIMIT: ${{ vars.BARTSPARTS_LIMIT }}
+        run: node tools/sync-bartsparts.mjs
+
+      - name: Commit updated catalog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet data/catalog.json; then
+            echo "Catalog did not change"
+            exit 0
+          fi
+          git add data/catalog.json
+          git commit -m "Sync BartsParts catalog"
+          git push origin main
+          git push origin main:gh-pages

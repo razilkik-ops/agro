@@ -568,6 +568,51 @@ h3 {
   background: var(--charcoal);
 }
 
+.brand-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.brand-card {
+  display: grid;
+  min-height: 104px;
+  place-items: center;
+  padding: 14px;
+  border: 2px solid rgba(21, 24, 22, 0.86);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: clamp(13px, 1vw, 18px);
+  font-weight: 900;
+  letter-spacing: 0;
+  text-align: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.brand-card:hover,
+.brand-card.is-active {
+  transform: translateY(-3px);
+  border-color: var(--green);
+  box-shadow: 0 18px 34px rgba(21, 24, 22, 0.1);
+}
+
+.brand-card.john-deere {
+  color: #20753a;
+}
+
+.brand-card.fendt {
+  color: #08792f;
+  font-style: italic;
+}
+
+.brand-card.claas {
+  color: #df0707;
+  font-style: italic;
+}
+
 .catalog-tools {
   display: flex;
   align-items: center;
@@ -1572,6 +1617,10 @@ h3 {
   .catalog-tools {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .brand-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sort-control,

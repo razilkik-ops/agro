@@ -3,12 +3,8 @@ const searchForm = document.querySelector(".search-form");
 const headerSearchForm = document.querySelector("#headerSearchForm");
 const productSearchInputs = document.querySelectorAll("[data-product-search]");
 const filterButtons = document.querySelectorAll(".filter-button");
-const cards = document.querySelectorAll(".product-card");
+const brandButtons = document.querySelectorAll("[data-brand-filter]");
 const productGrid = document.querySelector("#productGrid");
-const addButtons = document.querySelectorAll(".add-button");
-const detailButtons = document.querySelectorAll(".details-button");
-const favoriteButtons = document.querySelectorAll(".favorite-button");
-const compareButtons = document.querySelectorAll(".compare-button");
 const sortSelect = document.querySelector("#sortSelect");
 const favoritesOnly = document.querySelector("#favoritesOnly");
 const favoritesCount = document.querySelector("#favoritesCount");
@@ -44,8 +40,11 @@ const toast = document.querySelector("#toast");
 const storageKey = "agrodetal-cart";
 const favoritesKey = "agrodetal-favorites";
 const compareKey = "agrodetal-compare";
+const catalogUrl = "data/catalog.json";
 
 let activeFilter = "all";
+let activeBrand = "all";
+let cards = [...document.querySelectorAll(".product-card")];
 let cart = loadCart();
 let favorites = loadList(favoritesKey);
 let compareList = loadList(compareKey);
@@ -59,8 +58,21 @@ function renderIcons() {
   }
 }
 
-function formatPrice(value) {
-  return `${value.toLocaleString("ru-RU")} BYN`;
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatPrice(value, currency = "BYN") {
+  if (!Number(value)) {
+    return `по запросу`;
+  }
+
+  return `${Number(value).toLocaleString("ru-RU")} ${currency}`;
 }
 
 function showToast(message) {
@@ -102,6 +114,8 @@ function getCardData(card) {
     id: card.dataset.id,
     name: card.dataset.name,
     price: Number(card.dataset.price),
+    currency: card.dataset.currency || "BYN",
+    brand: card.dataset.brand,
     category: card.dataset.category,
     sku: card.dataset.sku,
     description: card.dataset.description,
@@ -113,21 +127,103 @@ function getCardData(card) {
   };
 }
 
+function productCardTemplate(product) {
+  const visual = product.visual || "green";
+  const icon = product.icon || "package";
+  const price = Number(product.price) || 0;
+  const currency = product.currency || "EUR";
+  const stockLabel = product.stock && product.stock !== "Наличие уточняется" ? "В наличии" : "Под заказ";
+
+  return `
+    <article
+      class="product-card"
+      data-id="${escapeHtml(product.id)}"
+      data-brand="${escapeHtml(product.brand)}"
+      data-category="${escapeHtml(product.category || "tractor")}"
+      data-name="${escapeHtml(product.name)}"
+      data-price="${price}"
+      data-currency="${escapeHtml(currency)}"
+      data-sku="${escapeHtml(product.sku)}"
+      data-stock="${escapeHtml(product.stock || "Наличие уточняется")}"
+      data-visual="${escapeHtml(visual)}"
+      data-description="${escapeHtml(product.description)}"
+      data-compatible="${escapeHtml(product.compatible || product.brand)}"
+      data-weight="${escapeHtml(product.weight || "Уточняется")}"
+      data-warranty="${escapeHtml(product.warranty || "По условиям поставщика")}"
+      data-url="${escapeHtml(product.url || "")}"
+    >
+      <div class="product-visual ${escapeHtml(visual)}">
+        <i data-lucide="${escapeHtml(icon)}"></i>
+      </div>
+      <div class="product-info">
+        <div class="card-tools">
+          <button class="mini-tool favorite-button" type="button" aria-label="В избранное">
+            <i data-lucide="heart"></i>
+          </button>
+          <button class="mini-tool compare-button" type="button" aria-label="Добавить к сравнению">
+            <i data-lucide="scale"></i>
+          </button>
+        </div>
+        <span class="tag">${escapeHtml(stockLabel)}</span>
+        <h3>${escapeHtml(product.name)}</h3>
+        <p>${escapeHtml(product.description)}</p>
+        <div class="product-bottom">
+          <strong>от ${formatPrice(price, currency)}</strong>
+          <div class="product-actions">
+            <button class="icon-button details-button" type="button" aria-label="Посмотреть товар">
+              <i data-lucide="eye"></i>
+            </button>
+            <button class="icon-button add-button" type="button" aria-label="Добавить в корзину">
+              <i data-lucide="plus"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function refreshCards() {
+  cards = [...document.querySelectorAll(".product-card")];
+}
+
+async function loadCatalog() {
+  try {
+    const response = await fetch(`${catalogUrl}?v=${Date.now()}`);
+
+    if (!response.ok) {
+      throw new Error(`Catalog request failed: ${response.status}`);
+    }
+
+    const catalog = await response.json();
+    const products = Array.isArray(catalog.products) ? catalog.products : [];
+
+    if (products.length > 0) {
+      productGrid.innerHTML = products.map(productCardTemplate).join("");
+      refreshCards();
+    }
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
 function applyFilters() {
   const query = (searchInput?.value || "").trim().toLowerCase();
   let visibleCount = 0;
 
   cards.forEach((card) => {
     const categoryMatch = activeFilter === "all" || card.dataset.category === activeFilter;
+    const brandMatch = activeBrand === "all" || card.dataset.brand === activeBrand;
     const favoriteMatch = !showFavoritesOnly || favorites.includes(card.dataset.id);
     const searchable = [
       card.dataset.name,
+      card.dataset.brand,
       card.dataset.sku,
       card.dataset.description,
       card.dataset.compatible
     ].join(" ").toLowerCase();
     const nameMatch = searchable.includes(query);
-    const isVisible = categoryMatch && favoriteMatch && nameMatch;
+    const isVisible = categoryMatch && brandMatch && favoriteMatch && nameMatch;
 
     if (isVisible) {
       visibleCount += 1;
@@ -159,7 +255,7 @@ function getCartTotalPrice() {
 
 function renderCart() {
   cartCount.textContent = getCartTotalQty();
-  cartTotal.textContent = formatPrice(getCartTotalPrice());
+  cartTotal.textContent = formatPrice(getCartTotalPrice(), cart[0]?.currency || "BYN");
   cartEmpty.classList.toggle("is-visible", cart.length === 0);
   cartList.innerHTML = "";
 
@@ -172,7 +268,7 @@ function renderCart() {
       </div>
       <div>
         <h3>${item.name}</h3>
-        <p>${formatPrice(item.price)} за шт.</p>
+        <p>${formatPrice(item.price, item.currency)} за шт.</p>
       </div>
       <div class="cart-item-actions">
         <div class="qty-control" aria-label="Количество ${item.name}">
@@ -197,6 +293,7 @@ function renderSavedStates() {
   compareCount.textContent = compareList.length;
   favoritesOnly.classList.toggle("is-active", showFavoritesOnly);
 
+  refreshCards();
   cards.forEach((card) => {
     const id = card.dataset.id;
     card.querySelector(".favorite-button")?.classList.toggle("is-active", favorites.includes(id));
@@ -207,7 +304,7 @@ function renderSavedStates() {
 }
 
 function getProductById(id) {
-  const card = [...cards].find((item) => item.dataset.id === id);
+  const card = cards.find((item) => item.dataset.id === id);
   return card ? getCardData(card) : null;
 }
 
@@ -282,7 +379,7 @@ function renderCompare() {
 
   const rows = [
     ["Товар", products.map((item) => `${item.name}<br><small>${item.sku}</small>`)],
-    ["Цена", products.map((item) => `от ${formatPrice(item.price)}`)],
+    ["Цена", products.map((item) => `от ${formatPrice(item.price, item.currency)}`)],
     ["Наличие", products.map((item) => item.stock)],
     ["Совместимость", products.map((item) => item.compatible)],
     ["Вес", products.map((item) => item.weight)],
@@ -387,7 +484,7 @@ function openProduct(card) {
   detailDescription.textContent = selectedProduct.description;
   detailCompatible.textContent = selectedProduct.compatible;
   detailStock.textContent = selectedProduct.stock;
-  detailPrice.textContent = `от ${formatPrice(selectedProduct.price)}`;
+  detailPrice.textContent = `от ${formatPrice(selectedProduct.price, selectedProduct.currency)}`;
 
   productModal.classList.add("is-open");
   productModal.setAttribute("aria-hidden", "false");
@@ -406,6 +503,15 @@ filterButtons.forEach((button) => {
     filterButtons.forEach((item) => item.classList.remove("is-active"));
     button.classList.add("is-active");
     activeFilter = button.dataset.filter;
+    applyFilters();
+  });
+});
+
+brandButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    brandButtons.forEach((item) => item.classList.remove("is-active"));
+    button.classList.add("is-active");
+    activeBrand = button.dataset.brandFilter;
     applyFilters();
   });
 });
@@ -433,11 +539,21 @@ favoritesOnly?.addEventListener("click", () => {
   applyFilters();
 });
 
-addButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const card = button.closest(".product-card");
+productGrid?.addEventListener("click", (event) => {
+  const card = event.target.closest(".product-card");
+
+  if (!card) {
+    return;
+  }
+
+  const addButton = event.target.closest(".add-button");
+  const favoriteButton = event.target.closest(".favorite-button");
+  const compareButton = event.target.closest(".compare-button");
+  const detailsButton = event.target.closest(".details-button");
+
+  if (addButton) {
     addToCart(getCardData(card));
-    button.animate(
+    addButton.animate(
       [
         { transform: "scale(1)" },
         { transform: "scale(0.9)" },
@@ -445,19 +561,22 @@ addButtons.forEach((button) => {
       ],
       { duration: 180, easing: "ease-out" }
     );
-  });
-});
+    return;
+  }
 
-favoriteButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    toggleFavorite(button.closest(".product-card"));
-  });
-});
+  if (favoriteButton) {
+    toggleFavorite(card);
+    return;
+  }
 
-compareButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    toggleCompare(button.closest(".product-card"));
-  });
+  if (compareButton) {
+    toggleCompare(card);
+    return;
+  }
+
+  if (detailsButton) {
+    openProduct(card);
+  }
 });
 
 compareOpen?.addEventListener("click", openCompare);
@@ -480,12 +599,6 @@ compareTable?.addEventListener("click", (event) => {
   saveList(compareKey, compareList);
   renderSavedStates();
   renderCompare();
-});
-
-detailButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    openProduct(button.closest(".product-card"));
-  });
 });
 
 detailAdd?.addEventListener("click", () => {
@@ -569,7 +682,8 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadCatalog();
   renderIcons();
   renderCart();
   renderSavedStates();
