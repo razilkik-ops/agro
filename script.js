@@ -56,6 +56,7 @@ const searchResultLimit = 120;
 const searchDebounceMs = 180;
 const productsPerPage = 20;
 const maxVisiblePageButtons = 10;
+const mobileVisiblePageButtons = 5;
 const catalogApiBase = `${window.location.origin}/api`;
 
 let activeFilter = "all";
@@ -406,7 +407,9 @@ function getSourcePageForCatalogPage(page) {
 function getVisiblePageNumbers(current, total) {
   const safeCurrent = Math.max(1, Number(current) || 1);
   const safeTotal = Math.max(1, Number(total) || 1);
-  const visible = Math.min(maxVisiblePageButtons, safeTotal);
+  const isMobileViewport = window.matchMedia("(max-width: 720px)").matches;
+  const maxVisible = isMobileViewport ? mobileVisiblePageButtons : maxVisiblePageButtons;
+  const visible = Math.min(maxVisible, safeTotal);
   let start = safeCurrent - Math.floor(visible / 2);
   let end = start + visible - 1;
 

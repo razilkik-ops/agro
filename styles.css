@@ -219,6 +219,7 @@ textarea {
 .feature-list svg,
 .benefits svg,
 .search-control svg {
+  display: block;
   width: 20px;
   height: 20px;
   flex: 0 0 auto;
@@ -1739,18 +1740,30 @@ h3 {
     height: 44px;
   }
 
-  .catalog-meta,
-  .catalog-pagination {
+  .catalog-meta {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .catalog-pagination {
+    align-items: center;
+    justify-content: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .catalog-pagination span {
+    order: 3;
+    width: 100%;
     min-width: 0;
+    text-align: center;
   }
 
   .page-numbers {
-    width: 100%;
+    order: 2;
+    width: auto;
+    flex-wrap: nowrap;
   }
 
   .sort-control,
