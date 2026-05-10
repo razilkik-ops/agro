@@ -5,11 +5,13 @@ import { gunzipSync } from "node:zlib";
 const baseUrl = (process.env.BARTSPARTS_BASE_URL || "https://bartsparts.com").replace(/\/$/, "");
 const previewPath = resolve(process.env.CATALOG_OUTPUT || "data/catalog.json");
 const catalogDir = resolve(process.env.CATALOG_DIR || "data/catalog");
+const searchDir = resolve(catalogDir, "search");
 const stateDir = resolve(process.env.BARTSPARTS_STATE_DIR || "data/bartsparts");
 const indexDir = resolve(stateDir, "index");
 const cacheDir = resolve(stateDir, "cache");
 const statePath = resolve(stateDir, "sync-state.json");
 const indexMetadataPath = resolve(indexDir, "metadata.json");
+const searchIndexPath = resolve(searchDir, "index.json");
 
 const chunkSize = getNumberEnv("BARTSPARTS_CHUNK_SIZE", 1000);
 const featuredPerBrand = getNumberEnv("BARTSPARTS_FEATURED_PER_BRAND", 12);
@@ -17,10 +19,11 @@ const limit = getNumberEnv("BARTSPARTS_LIMIT", 0, { allowZero: true });
 const requestDelayMs = getNumberEnv("BARTSPARTS_REQUEST_DELAY_MS", 120);
 const translationBatchSize = getNumberEnv("BARTSPARTS_TRANSLATION_BATCH_SIZE", 40);
 const priceMarkup = getPercentEnv("BARTSPARTS_PRICE_MARKUP", 20);
-const enrichPerRun = getNumberEnv("BARTSPARTS_ENRICH_PER_RUN", 2500);
+const enrichPerRun = getNumberEnv("BARTSPARTS_ENRICH_PER_RUN", 2500, { allowZero: true });
 const enrichConcurrency = getNumberEnv("BARTSPARTS_ENRICH_CONCURRENCY", 4);
 const refreshIndex = process.env.BARTSPARTS_REFRESH_INDEX === "1";
 const retryErrorHours = getNumberEnv("BARTSPARTS_ERROR_RETRY_HOURS", 12);
+const searchPrefixLength = getNumberEnv("BARTSPARTS_SEARCH_PREFIX_LENGTH", 3);
 
 const brandMap = {
   "john-deere": { label: "John Deere", visual: "green", icon: "package" },
@@ -36,6 +39,23 @@ const brandSlugs = (process.env.BARTSPARTS_BRANDS || allowedBrandSlugs.join(",")
   .split(",")
   .map((item) => item.trim())
   .filter((item) => allowedBrandSlugs.includes(item));
+
+const searchRecordFields = [
+  "id",
+  "sku",
+  "brand",
+  "brandSlug",
+  "name",
+  "nameOriginal",
+  "category",
+  "price",
+  "sourcePrice",
+  "currency",
+  "visual",
+  "icon",
+  "stock",
+  "url"
+];
 
 const sitemapIndexes = [
   `${baseUrl}/content/sitemap-products/sitemap-en-0.xml`,
@@ -79,6 +99,38 @@ function cleanText(value = "") {
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeSearchValue(value = "") {
+  return cleanText(value)
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ё/gi, "е")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearchValue(value = "") {
+  return normalizeSearchValue(value)
+    .split(" ")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getSearchShardPrefix(token = "") {
+  const normalized = normalizeSearchValue(token).replace(/\s+/g, "");
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.slice(0, Math.min(searchPrefixLength, normalized.length));
+}
+
+function encodeSearchShardId(prefix = "") {
+  return [...prefix].map((char) => char.codePointAt(0).toString(16)).join("-");
 }
 
 function slugifySku(value = "") {
@@ -787,6 +839,110 @@ async function writeBrandChunks(groupedProducts) {
   return brandIndex;
 }
 
+function createSearchRecord(product, brandSlug) {
+  return [
+    product.id,
+    product.sku,
+    product.brand,
+    brandSlug,
+    product.name,
+    product.nameOriginal,
+    product.category,
+    product.price,
+    product.sourcePrice,
+    product.currency,
+    product.visual,
+    product.icon,
+    product.stock,
+    product.url
+  ];
+}
+
+async function writeSearchIndex(groupedProducts) {
+  const shardMap = new Map();
+  let totalProducts = 0;
+
+  await mkdir(searchDir, { recursive: true });
+
+  for (const brandSlug of brandSlugs) {
+    const products = groupedProducts[brandSlug] || [];
+
+    for (const product of products) {
+      totalProducts += 1;
+
+      const tokens = new Set([
+        ...tokenizeSearchValue(product.sku),
+        ...tokenizeSearchValue(product.brand),
+        ...tokenizeSearchValue(product.name),
+        ...tokenizeSearchValue(product.nameOriginal)
+      ]);
+      const prefixes = [...new Set([...tokens].map((token) => getSearchShardPrefix(token)).filter(Boolean))];
+
+      if (prefixes.length === 0) {
+        continue;
+      }
+
+      const record = createSearchRecord(product, brandSlug);
+
+      for (const prefix of prefixes) {
+        const records = shardMap.get(prefix) || [];
+        records.push(record);
+        shardMap.set(prefix, records);
+      }
+    }
+  }
+
+  const shards = [];
+
+  for (const prefix of [...shardMap.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+    const shardId = encodeSearchShardId(prefix);
+    const records = shardMap.get(prefix) || [];
+
+    await writeJson(
+      resolve(searchDir, `${shardId}.json`),
+      {
+        metadata: {
+          prefix,
+          shardId,
+          count: records.length
+        },
+        fields: searchRecordFields,
+        products: records
+      },
+      false
+    );
+
+    shards.push({
+      prefix,
+      shardId,
+      count: records.length
+    });
+  }
+
+  await writeJson(
+    searchIndexPath,
+    {
+      metadata: {
+        sourceName: "BartsParts sitemap + product pages",
+        sourceUrl: baseUrl,
+        updatedAt: toIsoDate(),
+        totalProducts,
+        totalShards: shards.length,
+        prefixLength: searchPrefixLength,
+        minQueryLength: 2,
+        fields: searchRecordFields
+      },
+      shards
+    },
+    true
+  );
+
+  return {
+    totalProducts,
+    totalShards: shards.length
+  };
+}
+
 async function main() {
   const syncState = await readJson(statePath, {
     cursor: 0,
@@ -820,6 +976,7 @@ async function main() {
   const built = buildProducts(indexByBrand, cacheByBrand);
   const limitedProductsByBrand = applyLimit(built.productsByBrand);
   const brandIndex = await writeBrandChunks(limitedProductsByBrand);
+  const searchIndex = await writeSearchIndex(limitedProductsByBrand);
   const featuredProducts = brandSlugs.flatMap((brandSlug) =>
     (limitedProductsByBrand[brandSlug] || []).slice(0, featuredPerBrand)
   );
@@ -890,6 +1047,7 @@ async function main() {
   );
 
   console.log(`Catalog built: ${limitedCount} products`);
+  console.log(`Search shards built: ${searchIndex.totalShards}`);
   console.log(
     `Coverage: ${built.enrichedProducts}/${built.totalProducts}, priced: ${built.pricedProducts}/${built.totalProducts}`
   );

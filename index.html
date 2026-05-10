@@ -126,13 +126,40 @@
         </div>
 
         <div class="brand-strip" role="group" aria-label="Фильтр по брендам">
-          <button class="brand-card is-active" type="button" data-brand-filter="all">Все бренды</button>
-          <button class="brand-card john-deere" type="button" data-brand-filter="JOHN DEERE">JOHN DEERE</button>
-          <button class="brand-card fendt" type="button" data-brand-filter="FENDT">FENDT</button>
-          <button class="brand-card case-ih" type="button" data-brand-filter="CASE IH">CASE IH</button>
-          <button class="brand-card new-holland" type="button" data-brand-filter="NEW HOLLAND">NEW HOLLAND</button>
-          <button class="brand-card claas" type="button" data-brand-filter="CLAAS">CLAAS</button>
-          <button class="brand-card krone" type="button" data-brand-filter="KRONE">KRONE</button>
+          <button class="brand-card is-active" type="button" data-brand-filter="all" data-brand-slug="all">
+            <strong>Все бренды</strong>
+            <small id="allBrandsCount">0 товаров</small>
+          </button>
+          <button class="brand-card john-deere" type="button" data-brand-filter="John Deere" data-brand-slug="john-deere">
+            <img class="brand-logo" src="assets/brands/john-deere.png" alt="John Deere" loading="lazy" />
+            <strong>JOHN DEERE</strong>
+            <small>0 товаров</small>
+          </button>
+          <button class="brand-card fendt" type="button" data-brand-filter="Fendt" data-brand-slug="fendt">
+            <img class="brand-logo" src="assets/brands/fendt.png" alt="Fendt" loading="lazy" />
+            <strong>FENDT</strong>
+            <small>0 товаров</small>
+          </button>
+          <button class="brand-card case-ih" type="button" data-brand-filter="Case IH" data-brand-slug="case-ih">
+            <img class="brand-logo" src="assets/brands/case-ih.png" alt="Case IH" loading="lazy" />
+            <strong>CASE IH</strong>
+            <small>0 товаров</small>
+          </button>
+          <button class="brand-card new-holland" type="button" data-brand-filter="New Holland" data-brand-slug="new-holland">
+            <img class="brand-logo" src="assets/brands/new-holland.png" alt="New Holland" loading="lazy" />
+            <strong>NEW HOLLAND</strong>
+            <small>0 товаров</small>
+          </button>
+          <button class="brand-card claas" type="button" data-brand-filter="Claas" data-brand-slug="claas">
+            <img class="brand-logo" src="assets/brands/claas.png" alt="Claas" loading="lazy" />
+            <strong>CLAAS</strong>
+            <small>0 товаров</small>
+          </button>
+          <button class="brand-card krone" type="button" data-brand-filter="Krone" data-brand-slug="krone">
+            <img class="brand-logo" src="assets/brands/krone.png" alt="Krone" loading="lazy" />
+            <strong>KRONE</strong>
+            <small>0 товаров</small>
+          </button>
         </div>
 
         <div class="catalog-tools">
@@ -157,6 +184,11 @@
               <span id="compareCount">0</span>
             </button>
           </div>
+        </div>
+
+        <div class="catalog-meta" id="catalogMeta">
+          <strong id="catalogMetaTitle">Витрина брендов</strong>
+          <span id="catalogMetaText">Выберите бренд, чтобы открыть его товары.</span>
         </div>
 
         <div class="product-grid" id="productGrid">
@@ -341,6 +373,17 @@
           <h3>Ничего не найдено</h3>
           <p>Попробуйте другой артикул, модель техники или сбросьте фильтр избранного.</p>
         </div>
+        <div class="catalog-pagination" id="catalogPagination" hidden>
+          <button class="button ghost compact" id="pagePrev" type="button">
+            <i data-lucide="chevron-left"></i>
+            Назад
+          </button>
+          <span id="pageInfo">Страница 1 из 1</span>
+          <button class="button ghost compact" id="pageNext" type="button">
+            Вперёд
+            <i data-lucide="chevron-right"></i>
+          </button>
+        </div>
       </section>
 
       <section class="section selection-section" id="selection">
@@ -500,6 +543,7 @@
         </button>
         <div class="detail-visual" id="detailVisual">
           <i data-lucide="package"></i>
+          <img class="detail-brand-logo" id="detailBrandLogo" alt="" hidden />
         </div>
         <div class="detail-content">
           <p class="eyebrow" id="detailSku">Артикул</p>

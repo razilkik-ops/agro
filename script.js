@@ -6,6 +6,13 @@ const filterButtons = document.querySelectorAll(".filter-button");
 const brandButtons = document.querySelectorAll("[data-brand-filter]");
 const productGrid = document.querySelector("#productGrid");
 const sortSelect = document.querySelector("#sortSelect");
+const catalogMetaTitle = document.querySelector("#catalogMetaTitle");
+const catalogMetaText = document.querySelector("#catalogMetaText");
+const pagePrev = document.querySelector("#pagePrev");
+const pageNext = document.querySelector("#pageNext");
+const pageInfo = document.querySelector("#pageInfo");
+const allBrandsCount = document.querySelector("#allBrandsCount");
+const catalogPagination = document.querySelector("#catalogPagination");
 const favoritesOnly = document.querySelector("#favoritesOnly");
 const favoritesCount = document.querySelector("#favoritesCount");
 const compareOpen = document.querySelector("#compareOpen");
@@ -28,6 +35,7 @@ const requestForm = document.querySelector("#requestForm");
 const productModal = document.querySelector("#productModal");
 const detailClose = document.querySelector("#detailClose");
 const detailVisual = document.querySelector("#detailVisual");
+const detailBrandLogo = document.querySelector("#detailBrandLogo");
 const detailSku = document.querySelector("#detailSku");
 const detailTitle = document.querySelector("#detailTitle");
 const detailDescription = document.querySelector("#detailDescription");
@@ -41,9 +49,15 @@ const storageKey = "agrodetal-cart";
 const favoritesKey = "agrodetal-favorites";
 const compareKey = "agrodetal-compare";
 const catalogUrl = "data/catalog.json";
+const catalogIndexUrl = "data/catalog/index.json";
+const searchIndexUrl = "data/catalog/search/index.json";
+const searchResultLimit = 120;
+const searchDebounceMs = 180;
 
 let activeFilter = "all";
 let activeBrand = "all";
+let activeBrandSlug = "all";
+let currentPage = 1;
 let cards = [...document.querySelectorAll(".product-card")];
 let cart = loadCart();
 let favorites = loadList(favoritesKey);
@@ -51,6 +65,25 @@ let compareList = loadList(compareKey);
 let showFavoritesOnly = false;
 let selectedProduct = null;
 let toastTimer;
+let catalogIndex = null;
+let searchIndex = null;
+let searchShardMap = new Map();
+let searchShardCache = new Map();
+let searchDebounceTimer;
+let searchRequestId = 0;
+let isSearchMode = false;
+let isSearchLoading = false;
+let activeSearchQuery = "";
+let activeSearchTotal = 0;
+let activeSearchShown = 0;
+const brandLogoMap = {
+  "john deere": "assets/brands/john-deere.png",
+  fendt: "assets/brands/fendt.png",
+  "case ih": "assets/brands/case-ih.png",
+  "new holland": "assets/brands/new-holland.png",
+  claas: "assets/brands/claas.png",
+  krone: "assets/brands/krone.png"
+};
 
 function renderIcons() {
   if (window.lucide) {
@@ -72,7 +105,88 @@ function formatPrice(value, currency = "BYN") {
     return `по запросу`;
   }
 
-  return `${Number(value).toLocaleString("ru-RU")} ${currency}`;
+  return `${Number(value).toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  })} ${currency}`;
+}
+
+function formatCatalogPrice(value, currency = "BYN", options = {}) {
+  const { withPrefix = true, emptyLabel = "Цена уточняется" } = options;
+
+  if (!Number(value)) {
+    return emptyLabel;
+  }
+
+  const formatted = formatPrice(value, currency);
+  return withPrefix ? `от ${formatted}` : formatted;
+}
+
+function buildProductSubtitle(brand, sku) {
+  return [brand, sku].filter(Boolean).join(" · ");
+}
+
+function normalizeBrandKey(value = "") {
+  return String(value).trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeSearchValue(value = "") {
+  return String(value)
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ё/gi, "е")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearchValue(value = "") {
+  return normalizeSearchValue(value)
+    .split(" ")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getSearchMinQueryLength() {
+  return Number(searchIndex?.metadata?.minQueryLength) || 2;
+}
+
+function getSearchPrefixLength() {
+  return Number(searchIndex?.metadata?.prefixLength) || 3;
+}
+
+function getSearchShardPrefix(token = "") {
+  const normalized = normalizeSearchValue(token).replace(/\s+/g, "");
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.slice(0, Math.min(getSearchPrefixLength(), normalized.length));
+}
+
+function encodeSearchShardId(prefix = "") {
+  return [...prefix].map((char) => char.codePointAt(0).toString(16)).join("-");
+}
+
+function buildSearchableText(product) {
+  return normalizeSearchValue(
+    [product.sku, product.brand, product.name, product.nameOriginal, product.category].filter(Boolean).join(" ")
+  );
+}
+
+function shouldUseGlobalSearch(query = "") {
+  const normalized = normalizeSearchValue(query);
+  return normalized.length >= getSearchMinQueryLength();
+}
+
+function getCurrentSearchQuery() {
+  return (searchInput?.value || productSearchInputs[0]?.value || "").trim();
+}
+
+function getBrandLogoPath(brand) {
+  return brandLogoMap[normalizeBrandKey(brand)] || "";
 }
 
 function showToast(message) {
@@ -110,20 +224,29 @@ function saveList(key, list) {
 }
 
 function getCardData(card) {
+  const brand = card.dataset.brand;
+  const nameOriginal = card.dataset.nameOriginal || card.dataset.name;
   return {
     id: card.dataset.id,
     name: card.dataset.name,
+    nameOriginal,
     price: Number(card.dataset.price),
+    sourcePrice: Number(card.dataset.sourcePrice),
     currency: card.dataset.currency || "BYN",
-    brand: card.dataset.brand,
+    brand,
     category: card.dataset.category,
     sku: card.dataset.sku,
-    description: card.dataset.description,
-    compatible: card.dataset.compatible,
-    stock: card.dataset.stock,
+    icon: card.dataset.icon || "package",
+    description:
+      card.dataset.description ||
+      (nameOriginal && nameOriginal !== card.dataset.name
+        ? `Оригинальное название: ${nameOriginal}`
+        : `Деталь ${brand} из синхронизируемого каталога. Подробности и совместимость уточняются у менеджера.`),
+    compatible: card.dataset.compatible || brand,
+    stock: card.dataset.stock || "Наличие и цена уточняются по запросу",
     visual: card.dataset.visual,
-    weight: card.dataset.weight,
-    warranty: card.dataset.warranty
+    weight: card.dataset.weight || "Уточняется",
+    warranty: card.dataset.warranty || "По условиям поставщика"
   };
 }
 
@@ -131,29 +254,56 @@ function productCardTemplate(product) {
   const visual = product.visual || "green";
   const icon = product.icon || "package";
   const price = Number(product.price) || 0;
+  const sourcePrice = Number(product.sourcePrice) || 0;
   const currency = product.currency || "EUR";
-  const stockLabel = product.stock && product.stock !== "Наличие уточняется" ? "В наличии" : "Под заказ";
+  const brand = product.brand || "BartsParts";
+  const brandLogo = getBrandLogoPath(brand);
+  const nameOriginal = product.nameOriginal || product.name;
+  const description =
+    product.description ||
+    (nameOriginal && nameOriginal !== product.name
+      ? `Оригинальное название: ${nameOriginal}`
+      : `Деталь ${brand} из каталога BartsParts. Для цены и совместимости отправьте запрос менеджеру.`);
+  const compatible = product.compatible || brand;
+  const stock = product.stock || "Наличие и цена уточняются по запросу";
+  const weight = product.weight || "Уточняется";
+  const warranty = product.warranty || "По условиям поставщика";
+  const subtitle = buildProductSubtitle(brand, product.sku);
+  const helperText =
+    nameOriginal && nameOriginal !== product.name ? `Оригинал: ${nameOriginal}` : description;
+  const stockLabel =
+    stock && !String(stock).toLowerCase().includes("уточ")
+      ? "Цена обновлена"
+      : "По запросу";
+  const priceLabel = formatCatalogPrice(price, currency, {
+    withPrefix: true,
+    emptyLabel: "Цена уточняется"
+  });
 
   return `
     <article
       class="product-card"
       data-id="${escapeHtml(product.id)}"
-      data-brand="${escapeHtml(product.brand)}"
+      data-brand="${escapeHtml(brand)}"
       data-category="${escapeHtml(product.category || "tractor")}"
       data-name="${escapeHtml(product.name)}"
+      data-name-original="${escapeHtml(nameOriginal)}"
       data-price="${price}"
+      data-source-price="${sourcePrice}"
       data-currency="${escapeHtml(currency)}"
       data-sku="${escapeHtml(product.sku)}"
-      data-stock="${escapeHtml(product.stock || "Наличие уточняется")}"
+      data-icon="${escapeHtml(icon)}"
+      data-stock="${escapeHtml(stock)}"
       data-visual="${escapeHtml(visual)}"
-      data-description="${escapeHtml(product.description)}"
-      data-compatible="${escapeHtml(product.compatible || product.brand)}"
-      data-weight="${escapeHtml(product.weight || "Уточняется")}"
-      data-warranty="${escapeHtml(product.warranty || "По условиям поставщика")}"
+      data-description="${escapeHtml(description)}"
+      data-compatible="${escapeHtml(compatible)}"
+      data-weight="${escapeHtml(weight)}"
+      data-warranty="${escapeHtml(warranty)}"
       data-url="${escapeHtml(product.url || "")}"
     >
       <div class="product-visual ${escapeHtml(visual)}">
         <i data-lucide="${escapeHtml(icon)}"></i>
+        ${brandLogo ? `<img class="product-brand-logo" src="${escapeHtml(brandLogo)}" alt="${escapeHtml(brand)}" loading="lazy" />` : ""}
       </div>
       <div class="product-info">
         <div class="card-tools">
@@ -166,9 +316,10 @@ function productCardTemplate(product) {
         </div>
         <span class="tag">${escapeHtml(stockLabel)}</span>
         <h3>${escapeHtml(product.name)}</h3>
-        <p>${escapeHtml(product.description)}</p>
+        <div class="product-meta-line">${escapeHtml(subtitle)}</div>
+        <p>${escapeHtml(helperText)}</p>
         <div class="product-bottom">
-          <strong>от ${formatPrice(price, currency)}</strong>
+          <strong>${escapeHtml(priceLabel)}</strong>
           <div class="product-actions">
             <button class="icon-button details-button" type="button" aria-label="Посмотреть товар">
               <i data-lucide="eye"></i>
@@ -187,9 +338,178 @@ function refreshCards() {
   cards = [...document.querySelectorAll(".product-card")];
 }
 
-async function loadCatalog() {
+function getBrandInfo() {
+  if (!catalogIndex || activeBrandSlug === "all") {
+    return null;
+  }
+
+  return catalogIndex.brands.find((brand) => brand.brandSlug === activeBrandSlug) || null;
+}
+
+function renderCatalogMeta(visibleCount = null) {
+  if (isSearchMode) {
+    const minQueryLength = getSearchMinQueryLength();
+    const normalizedQuery = normalizeSearchValue(activeSearchQuery);
+    const totalText = activeSearchTotal.toLocaleString("ru-RU");
+    const shownText = activeSearchShown.toLocaleString("ru-RU");
+
+    catalogMetaTitle.textContent = normalizedQuery
+      ? `Поиск: ${activeSearchQuery}`
+      : "Глобальный поиск по каталогу";
+
+    if (isSearchLoading) {
+      catalogMetaText.textContent = "Ищем товары по всему каталогу BartsParts...";
+      catalogPagination.hidden = true;
+      return;
+    }
+
+    if (normalizedQuery && normalizedQuery.length < minQueryLength) {
+      catalogMetaText.textContent = `Введите минимум ${minQueryLength} символа, чтобы искать по всему каталогу.`;
+      catalogPagination.hidden = true;
+      return;
+    }
+
+    if (!normalizedQuery) {
+      catalogMetaText.textContent = "Введите артикул, бренд или название детали, чтобы искать по всему каталогу.";
+      catalogPagination.hidden = true;
+      return;
+    }
+
+    if (activeSearchTotal === 0) {
+      catalogMetaText.textContent = "Совпадений не найдено. Попробуйте другой артикул, бренд или название детали.";
+      catalogPagination.hidden = true;
+      return;
+    }
+
+    const filtersText =
+      visibleCount !== null && visibleCount !== activeSearchShown
+        ? ` После дополнительных фильтров видно ${visibleCount.toLocaleString("ru-RU")}.`
+        : "";
+    const limitText =
+      activeSearchTotal > activeSearchShown
+        ? ` Найдено ${totalText} товаров, показаны первые ${shownText}.`
+        : ` Найдено ${totalText} товаров.`;
+
+    catalogMetaText.textContent = `${limitText}${filtersText}`.trim();
+    catalogPagination.hidden = true;
+    return;
+  }
+
+  const brandInfo = getBrandInfo();
+
+  if (!brandInfo) {
+    catalogMetaTitle.textContent = "Витрина брендов";
+    catalogMetaText.textContent = `Показаны стартовые товары. Цены на сайте рассчитаны как BartsParts +20%.`;
+    catalogPagination.hidden = true;
+    return;
+  }
+
+  catalogMetaTitle.textContent = brandInfo.brand;
+  catalogMetaText.textContent = `${brandInfo.count.toLocaleString("ru-RU")} товаров в каталоге BartsParts, цены на сайте: +20%`;
+  pageInfo.textContent = `Страница ${currentPage} из ${brandInfo.pages}`;
+  pagePrev.disabled = currentPage <= 1;
+  pageNext.disabled = currentPage >= brandInfo.pages;
+  catalogPagination.hidden = false;
+}
+
+function updateBrandCounts() {
+  if (!catalogIndex) {
+    return;
+  }
+
+  const total = catalogIndex.brands.reduce((sum, brand) => sum + brand.count, 0);
+  allBrandsCount.textContent = `${total.toLocaleString("ru-RU")} товаров`;
+
+  brandButtons.forEach((button) => {
+    const slug = button.dataset.brandSlug;
+
+    if (slug === "all") {
+      return;
+    }
+
+    const brandInfo = catalogIndex.brands.find((brand) => brand.brandSlug === slug);
+    const counter = button.querySelector("small");
+
+    if (brandInfo && counter) {
+      counter.textContent = `${brandInfo.count.toLocaleString("ru-RU")} товаров`;
+    }
+  });
+}
+
+async function loadCatalogIndex() {
+  const response = await fetch(`${catalogIndexUrl}?v=${Date.now()}`);
+
+  if (!response.ok) {
+    throw new Error(`Catalog index request failed: ${response.status}`);
+  }
+
+  catalogIndex = await response.json();
+  updateBrandCounts();
+  renderCatalogMeta();
+}
+
+function decodeSearchProduct(record) {
+  const fields = searchIndex?.metadata?.fields || [];
+  return fields.reduce((product, field, index) => {
+    product[field] = record[index];
+    return product;
+  }, {});
+}
+
+async function loadSearchIndex() {
+  if (searchIndex) {
+    return searchIndex;
+  }
+
+  const response = await fetch(`${searchIndexUrl}?v=${Date.now()}`);
+
+  if (!response.ok) {
+    throw new Error(`Search index request failed: ${response.status}`);
+  }
+
+  searchIndex = await response.json();
+  searchShardMap = new Map((searchIndex.shards || []).map((item) => [item.prefix, item]));
+  return searchIndex;
+}
+
+async function loadSearchShard(prefix) {
+  await loadSearchIndex();
+
+  if (!prefix) {
+    return [];
+  }
+
+  if (searchShardCache.has(prefix)) {
+    return searchShardCache.get(prefix);
+  }
+
+  const shardInfo = searchShardMap.get(prefix);
+
+  if (!shardInfo) {
+    searchShardCache.set(prefix, []);
+    return [];
+  }
+
+  const shardId = shardInfo.shardId || encodeSearchShardId(prefix);
+  const response = await fetch(`data/catalog/search/${shardId}.json?v=${Date.now()}`);
+
+  if (!response.ok) {
+    throw new Error(`Search shard request failed: ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const products = Array.isArray(payload.products) ? payload.products.map(decodeSearchProduct) : [];
+  searchShardCache.set(prefix, products);
+  return products;
+}
+
+async function loadCatalogPage() {
   try {
-    const response = await fetch(`${catalogUrl}?v=${Date.now()}`);
+    const url =
+      activeBrandSlug === "all"
+        ? catalogUrl
+        : `data/catalog/${activeBrandSlug}/page-${currentPage}.json`;
+    const response = await fetch(`${url}?v=${Date.now()}`);
 
     if (!response.ok) {
       throw new Error(`Catalog request failed: ${response.status}`);
@@ -198,30 +518,169 @@ async function loadCatalog() {
     const catalog = await response.json();
     const products = Array.isArray(catalog.products) ? catalog.products : [];
 
-    if (products.length > 0) {
-      productGrid.innerHTML = products.map(productCardTemplate).join("");
-      refreshCards();
+    isSearchMode = false;
+    isSearchLoading = false;
+    activeSearchTotal = 0;
+    activeSearchShown = products.length;
+    productGrid.innerHTML = products.map(productCardTemplate).join("");
+    refreshCards();
+    renderSavedStates();
+    if (sortSelect?.value && sortSelect.value !== "default") {
+      sortProducts();
     }
+    applyFilters();
+    renderCatalogMeta();
+    renderIcons();
   } catch (error) {
     console.warn(error);
   }
 }
 
+function matchesSearchProduct(product, normalizedQuery, tokens) {
+  const searchable = buildSearchableText(product);
+
+  if (!searchable) {
+    return false;
+  }
+
+  return tokens.every((token) => searchable.includes(token)) || searchable.includes(normalizedQuery);
+}
+
+function scoreSearchProduct(product, normalizedQuery, tokens) {
+  const sku = normalizeSearchValue(product.sku);
+  const name = normalizeSearchValue(product.name);
+  const nameOriginal = normalizeSearchValue(product.nameOriginal);
+  const brand = normalizeSearchValue(product.brand);
+  const searchable = [sku, name, nameOriginal, brand].join(" ");
+  let score = 0;
+
+  if (sku === normalizedQuery) {
+    score += 500;
+  } else if (sku.startsWith(normalizedQuery)) {
+    score += 220;
+  }
+
+  if (name.startsWith(normalizedQuery)) {
+    score += 170;
+  }
+
+  if (nameOriginal.startsWith(normalizedQuery)) {
+    score += 140;
+  }
+
+  if (brand.startsWith(normalizedQuery)) {
+    score += 80;
+  }
+
+  score += tokens.filter((token) => searchable.includes(token)).length * 25;
+
+  if (Number(product.price) > 0) {
+    score += 5;
+  }
+
+  return score;
+}
+
+async function runGlobalSearch(query) {
+  const normalizedQuery = normalizeSearchValue(query);
+  const requestId = ++searchRequestId;
+  activeSearchQuery = query.trim();
+
+  if (!shouldUseGlobalSearch(query)) {
+    if (isSearchMode) {
+      await loadCatalogPage();
+    } else {
+      applyFilters();
+      renderCatalogMeta();
+    }
+    return;
+  }
+
+  isSearchMode = true;
+  isSearchLoading = true;
+  activeSearchTotal = 0;
+  activeSearchShown = 0;
+  renderCatalogMeta();
+
+  try {
+    await loadSearchIndex();
+
+    const tokens = [...new Set(tokenizeSearchValue(normalizedQuery))];
+    const prefixes = [...new Set(tokens.map((token) => getSearchShardPrefix(token)).filter(Boolean))];
+    const shardProducts = await Promise.all(prefixes.map((prefix) => loadSearchShard(prefix)));
+
+    if (requestId !== searchRequestId) {
+      return;
+    }
+
+    const merged = new Map();
+
+    shardProducts.flat().forEach((product) => {
+      if (!merged.has(product.id)) {
+        merged.set(product.id, product);
+      }
+    });
+
+    let results = [...merged.values()].filter((product) => matchesSearchProduct(product, normalizedQuery, tokens));
+
+    if (activeBrandSlug !== "all") {
+      results = results.filter((product) => product.brandSlug === activeBrandSlug);
+    }
+
+    results.sort(
+      (left, right) =>
+        scoreSearchProduct(right, normalizedQuery, tokens) - scoreSearchProduct(left, normalizedQuery, tokens)
+    );
+
+    const shownResults = results.slice(0, searchResultLimit);
+
+    isSearchLoading = false;
+    activeSearchTotal = results.length;
+    activeSearchShown = shownResults.length;
+    productGrid.innerHTML = shownResults.map(productCardTemplate).join("");
+    refreshCards();
+    renderSavedStates();
+    if (sortSelect?.value && sortSelect.value !== "default") {
+      sortProducts();
+    }
+    applyFilters();
+    renderCatalogMeta();
+    renderIcons();
+  } catch (error) {
+    console.warn(error);
+
+    if (requestId !== searchRequestId) {
+      return;
+    }
+
+    isSearchLoading = false;
+    activeSearchTotal = 0;
+    activeSearchShown = 0;
+    productGrid.innerHTML = "";
+    refreshCards();
+    applyFilters();
+    renderCatalogMeta();
+  }
+}
+
 function applyFilters() {
-  const query = (searchInput?.value || "").trim().toLowerCase();
+  const query = normalizeSearchValue(searchInput?.value || "");
   let visibleCount = 0;
 
   cards.forEach((card) => {
     const categoryMatch = activeFilter === "all" || card.dataset.category === activeFilter;
     const brandMatch = activeBrand === "all" || card.dataset.brand === activeBrand;
     const favoriteMatch = !showFavoritesOnly || favorites.includes(card.dataset.id);
-    const searchable = [
-      card.dataset.name,
-      card.dataset.brand,
-      card.dataset.sku,
-      card.dataset.description,
-      card.dataset.compatible
-    ].join(" ").toLowerCase();
+    const searchable = normalizeSearchValue(
+      [
+        card.dataset.name,
+        card.dataset.nameOriginal,
+        card.dataset.brand,
+        card.dataset.sku,
+        card.dataset.description,
+        card.dataset.compatible
+      ].join(" ")
+    );
     const nameMatch = searchable.includes(query);
     const isVisible = categoryMatch && brandMatch && favoriteMatch && nameMatch;
 
@@ -233,6 +692,7 @@ function applyFilters() {
   });
 
   emptyResults.classList.toggle("is-visible", visibleCount === 0);
+  renderCatalogMeta(visibleCount);
 }
 
 function syncSearch(value, sourceInput) {
@@ -241,8 +701,13 @@ function syncSearch(value, sourceInput) {
       input.value = value;
     }
   });
+}
 
-  applyFilters();
+function queueSearch(query) {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    runGlobalSearch(query);
+  }, searchDebounceMs);
 }
 
 function getCartTotalQty() {
@@ -255,7 +720,10 @@ function getCartTotalPrice() {
 
 function renderCart() {
   cartCount.textContent = getCartTotalQty();
-  cartTotal.textContent = formatPrice(getCartTotalPrice(), cart[0]?.currency || "BYN");
+  const hasUnknownPrice = cart.some((item) => !Number(item.price));
+  cartTotal.textContent = hasUnknownPrice
+    ? "Уточняется менеджером"
+    : formatPrice(getCartTotalPrice(), cart[0]?.currency || "BYN");
   cartEmpty.classList.toggle("is-visible", cart.length === 0);
   cartList.innerHTML = "";
 
@@ -268,7 +736,7 @@ function renderCart() {
       </div>
       <div>
         <h3>${item.name}</h3>
-        <p>${formatPrice(item.price, item.currency)} за шт.</p>
+        <p>${formatCatalogPrice(item.price, item.currency, { withPrefix: false })}${Number(item.price) ? " за шт." : ""}</p>
       </div>
       <div class="cart-item-actions">
         <div class="qty-control" aria-label="Количество ${item.name}">
@@ -379,7 +847,7 @@ function renderCompare() {
 
   const rows = [
     ["Товар", products.map((item) => `${item.name}<br><small>${item.sku}</small>`)],
-    ["Цена", products.map((item) => `от ${formatPrice(item.price, item.currency)}`)],
+    ["Цена", products.map((item) => formatCatalogPrice(item.price, item.currency))],
     ["Наличие", products.map((item) => item.stock)],
     ["Совместимость", products.map((item) => item.compatible)],
     ["Вес", products.map((item) => item.weight)],
@@ -477,14 +945,31 @@ function closeCompare() {
 
 function openProduct(card) {
   selectedProduct = getCardData(card);
+  const brandLogo = getBrandLogoPath(selectedProduct.brand);
 
   detailVisual.className = `detail-visual ${selectedProduct.visual}`;
-  detailSku.textContent = `Артикул ${selectedProduct.sku}`;
+  detailVisual.innerHTML = `<i data-lucide="${escapeHtml(selectedProduct.icon || "package")}"></i>`;
+  if (detailBrandLogo) {
+    if (brandLogo) {
+      detailBrandLogo.src = brandLogo;
+      detailBrandLogo.alt = selectedProduct.brand;
+      detailBrandLogo.hidden = false;
+    } else {
+      detailBrandLogo.hidden = true;
+      detailBrandLogo.removeAttribute("src");
+      detailBrandLogo.alt = "";
+    }
+    detailVisual.append(detailBrandLogo);
+  }
+  detailSku.textContent = `${selectedProduct.brand} · Артикул ${selectedProduct.sku}`;
   detailTitle.textContent = selectedProduct.name;
-  detailDescription.textContent = selectedProduct.description;
+  detailDescription.textContent =
+    selectedProduct.nameOriginal && selectedProduct.nameOriginal !== selectedProduct.name
+      ? `Оригинальное название: ${selectedProduct.nameOriginal}`
+      : selectedProduct.description;
   detailCompatible.textContent = selectedProduct.compatible;
   detailStock.textContent = selectedProduct.stock;
-  detailPrice.textContent = `от ${formatPrice(selectedProduct.price, selectedProduct.currency)}`;
+  detailPrice.textContent = formatCatalogPrice(selectedProduct.price, selectedProduct.currency);
 
   productModal.classList.add("is-open");
   productModal.setAttribute("aria-hidden", "false");
@@ -512,19 +997,53 @@ brandButtons.forEach((button) => {
     brandButtons.forEach((item) => item.classList.remove("is-active"));
     button.classList.add("is-active");
     activeBrand = button.dataset.brandFilter;
-    applyFilters();
+    activeBrandSlug = button.dataset.brandSlug;
+    currentPage = 1;
+    const query = getCurrentSearchQuery();
+
+    if (shouldUseGlobalSearch(query)) {
+      queueSearch(query);
+      return;
+    }
+
+    loadCatalogPage();
   });
 });
 
-searchForm?.addEventListener("submit", (event) => event.preventDefault());
+pagePrev?.addEventListener("click", () => {
+  if (currentPage <= 1) {
+    return;
+  }
+
+  currentPage -= 1;
+  loadCatalogPage();
+});
+
+pageNext?.addEventListener("click", () => {
+  const brandInfo = getBrandInfo();
+
+  if (!brandInfo || currentPage >= brandInfo.pages) {
+    return;
+  }
+
+  currentPage += 1;
+  loadCatalogPage();
+});
+
+searchForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runGlobalSearch(getCurrentSearchQuery());
+});
 headerSearchForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  runGlobalSearch(getCurrentSearchQuery());
   document.querySelector("#catalog")?.scrollIntoView({ behavior: "smooth" });
 });
 
 productSearchInputs.forEach((input) => {
   input.addEventListener("input", () => {
     syncSearch(input.value, input);
+    queueSearch(input.value);
   });
 });
 
@@ -683,10 +1202,10 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadCatalog();
+  await Promise.all([loadCatalogIndex(), loadSearchIndex().catch(() => null)]);
+  await loadCatalogPage();
   renderIcons();
   renderCart();
   renderSavedStates();
   renderCompare();
-  applyFilters();
 });
