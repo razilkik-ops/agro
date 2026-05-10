@@ -1,0 +1,55 @@
+name: Nightly BartsParts enrich
+
+on:
+  schedule:
+    - cron: "42 1 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: bartsparts-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Nightly enrich
+        env:
+          BARTSPARTS_BRANDS: ${{ vars.BARTSPARTS_BRANDS || 'john-deere,fendt,case-ih,new-holland,claas,krone' }}
+          BARTSPARTS_LIMIT: ${{ vars.BARTSPARTS_LIMIT }}
+          BARTSPARTS_CHUNK_SIZE: ${{ vars.BARTSPARTS_CHUNK_SIZE || '1000' }}
+          BARTSPARTS_FEATURED_PER_BRAND: ${{ vars.BARTSPARTS_FEATURED_PER_BRAND || '12' }}
+          BARTSPARTS_PRICE_MARKUP: ${{ vars.BARTSPARTS_PRICE_MARKUP || '20' }}
+          BARTSPARTS_ENRICH_PER_RUN: ${{ vars.BARTSPARTS_NIGHTLY_ENRICH_PER_RUN || '15000' }}
+          BARTSPARTS_ENRICH_CONCURRENCY: ${{ vars.BARTSPARTS_NIGHTLY_ENRICH_CONCURRENCY || '8' }}
+          BARTSPARTS_REQUEST_DELAY_MS: ${{ vars.BARTSPARTS_NIGHTLY_REQUEST_DELAY_MS || '80' }}
+          BARTSPARTS_TRANSLATION_BATCH_SIZE: ${{ vars.BARTSPARTS_NIGHTLY_TRANSLATION_BATCH_SIZE || '60' }}
+          BARTSPARTS_ERROR_RETRY_HOURS: ${{ vars.BARTSPARTS_NIGHTLY_ERROR_RETRY_HOURS || '6' }}
+          BARTSPARTS_REFRESH_INDEX: ${{ vars.BARTSPARTS_NIGHTLY_REFRESH_INDEX || '0' }}
+        run: node tools/sync-bartsparts.mjs
+
+      - name: Commit updated catalog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet data; then
+            echo "Catalog did not change"
+            exit 0
+          fi
+          git add data
+          git commit -m "Nightly BartsParts enrich"
+          git push origin main
+          git push origin main:gh-pages
