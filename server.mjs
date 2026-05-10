@@ -12,6 +12,8 @@ const dataRoot = resolve(projectRoot, "data");
 const catalogIndexPath = resolve(projectRoot, "data/catalog/index.json");
 const catalogPreviewPath = resolve(projectRoot, "data/catalog.json");
 const brandCacheDir = resolve(projectRoot, "data/bartsparts/cache");
+const searchIndexPath = resolve(projectRoot, "data/catalog/search/index.json");
+const searchDir = resolve(projectRoot, "data/catalog/search");
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -28,6 +30,9 @@ const mimeTypes = {
 
 const brandCacheStore = new Map();
 const brandCacheLocks = new Map();
+let cachedSearchIndex = null;
+let cachedSearchShardMap = new Map();
+const searchShardStore = new Map();
 const priceCacheTtlMs = Math.max(1000, Number(process.env.API_PRICE_CACHE_TTL_MS || 3 * 60 * 60 * 1000));
 
 function cleanText(value = "") {
@@ -41,8 +46,102 @@ function cleanText(value = "") {
     .trim();
 }
 
+function normalizeSearchValue(value = "") {
+  return String(value)
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ё/gi, "е")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearchValue(value = "") {
+  return normalizeSearchValue(value)
+    .split(" ")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function roundMoney(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function decodeSearchProduct(record, fields = []) {
+  return fields.reduce((product, field, index) => {
+    product[field] = record[index];
+    return product;
+  }, {});
+}
+
+function getSearchMinQueryLength(index) {
+  return Number(index?.metadata?.minQueryLength) || 2;
+}
+
+function getSearchPrefixLength(index) {
+  return Number(index?.metadata?.prefixLength) || 3;
+}
+
+function getSearchShardPrefix(token = "", index = null) {
+  const normalized = normalizeSearchValue(token).replace(/\s+/g, "");
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.slice(0, Math.min(getSearchPrefixLength(index), normalized.length));
+}
+
+function buildSearchableText(product) {
+  return normalizeSearchValue(
+    [product.sku, product.brand, product.name, product.nameOriginal, product.category].filter(Boolean).join(" ")
+  );
+}
+
+function matchesSearchProduct(product, normalizedQuery, tokens) {
+  const searchable = buildSearchableText(product);
+
+  if (!searchable) {
+    return false;
+  }
+
+  return tokens.every((token) => searchable.includes(token)) || searchable.includes(normalizedQuery);
+}
+
+function scoreSearchProduct(product, normalizedQuery, tokens) {
+  const sku = normalizeSearchValue(product.sku);
+  const name = normalizeSearchValue(product.name);
+  const nameOriginal = normalizeSearchValue(product.nameOriginal);
+  const brand = normalizeSearchValue(product.brand);
+  const searchable = [sku, name, nameOriginal, brand].join(" ");
+  let score = 0;
+
+  if (sku === normalizedQuery) {
+    score += 500;
+  } else if (sku.startsWith(normalizedQuery)) {
+    score += 220;
+  }
+
+  if (name.startsWith(normalizedQuery)) {
+    score += 170;
+  }
+
+  if (nameOriginal.startsWith(normalizedQuery)) {
+    score += 140;
+  }
+
+  if (brand.startsWith(normalizedQuery)) {
+    score += 80;
+  }
+
+  score += tokens.filter((token) => searchable.includes(token)).length * 25;
+
+  if (Number(product.price) > 0) {
+    score += 5;
+  }
+
+  return score;
 }
 
 function parseSourcePrice(value = "") {
@@ -305,6 +404,47 @@ async function getCatalogIndex() {
   return index;
 }
 
+async function loadSearchIndexData() {
+  if (cachedSearchIndex) {
+    return cachedSearchIndex;
+  }
+
+  const index = await readJson(searchIndexPath, null);
+
+  if (!index || !Array.isArray(index.shards)) {
+    throw new Error("Search index is missing or invalid");
+  }
+
+  cachedSearchIndex = index;
+  cachedSearchShardMap = new Map((index.shards || []).map((item) => [item.prefix, item]));
+  return index;
+}
+
+async function loadSearchShard(index, prefix) {
+  if (!prefix) {
+    return [];
+  }
+
+  if (searchShardStore.has(prefix)) {
+    return searchShardStore.get(prefix);
+  }
+
+  const shardInfo = cachedSearchShardMap.get(prefix);
+
+  if (!shardInfo?.shardId) {
+    searchShardStore.set(prefix, []);
+    return [];
+  }
+
+  const shardPath = resolve(searchDir, `${shardInfo.shardId}.json`);
+  const payload = await readJson(shardPath, { products: [] });
+  const fields = Array.isArray(index?.metadata?.fields) ? index.metadata.fields : [];
+  const products = Array.isArray(payload.products) ? payload.products.map((record) => decodeSearchProduct(record, fields)) : [];
+
+  searchShardStore.set(prefix, products);
+  return products;
+}
+
 function brandSlugFromName(index, brandName) {
   const item = index.brands.find((entry) => cleanText(entry.brand) === cleanText(brandName));
   return item?.brandSlug || "";
@@ -376,6 +516,67 @@ async function getCatalogPage(index, brandSlug, page, perPage) {
   };
 }
 
+async function searchCatalog(index, query, brandSlug, limit) {
+  const searchIndex = await loadSearchIndexData();
+  const normalizedQuery = normalizeSearchValue(query);
+  const safeLimit = Math.max(1, Number(limit) || 120);
+  const minQueryLength = getSearchMinQueryLength(searchIndex);
+
+  if (!normalizedQuery || normalizedQuery.length < minQueryLength) {
+    return {
+      metadata: {
+        brandSlug: brandSlug || "all",
+        query: cleanText(query),
+        minQueryLength,
+        total: 0,
+        shown: 0,
+        limit: safeLimit
+      },
+      products: []
+    };
+  }
+
+  const tokens = [...new Set(tokenizeSearchValue(normalizedQuery))];
+  const prefixes = [...new Set(tokens.map((token) => getSearchShardPrefix(token, searchIndex)).filter(Boolean))];
+  const shardProducts = await Promise.all(prefixes.map((prefix) => loadSearchShard(searchIndex, prefix)));
+  const merged = new Map();
+
+  shardProducts.flat().forEach((product) => {
+    if (!merged.has(product.id)) {
+      merged.set(product.id, product);
+    }
+  });
+
+  let results = [...merged.values()].filter((product) => matchesSearchProduct(product, normalizedQuery, tokens));
+
+  if (brandSlug && brandSlug !== "all") {
+    results = results.filter((product) => product.brandSlug === brandSlug);
+  }
+
+  results.sort(
+    (left, right) => scoreSearchProduct(right, normalizedQuery, tokens) - scoreSearchProduct(left, normalizedQuery, tokens)
+  );
+
+  const markupRate = Number(index?.metadata?.priceMarkupPercent || 20) / 100;
+  const shownResults = results.slice(0, safeLimit).map((product) => ({
+    ...product,
+    brandSlug: product.brandSlug || brandSlugFromName(index, product.brand)
+  }));
+  const enriched = await enrichProducts(shownResults, markupRate);
+
+  return {
+    metadata: {
+      brandSlug: brandSlug || "all",
+      query: cleanText(query),
+      minQueryLength,
+      total: results.length,
+      shown: enriched.length,
+      limit: safeLimit
+    },
+    products: enriched
+  };
+}
+
 async function handleApi(req, res, url) {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -419,6 +620,22 @@ async function handleApi(req, res, url) {
       return;
     } catch (error) {
       errorReply(res, 500, error.message || "Failed to load catalog page");
+      return;
+    }
+  }
+
+  if (url.pathname === "/api/search") {
+    const brand = cleanText(url.searchParams.get("brand") || "all").toLowerCase();
+    const query = cleanText(url.searchParams.get("q") || "");
+    const limit = Number(url.searchParams.get("limit") || 120);
+
+    try {
+      const index = await getCatalogIndex();
+      const payload = await searchCatalog(index, query, brand, limit);
+      jsonReply(res, 200, payload);
+      return;
+    } catch (error) {
+      errorReply(res, 500, error.message || "Failed to search catalog");
       return;
     }
   }

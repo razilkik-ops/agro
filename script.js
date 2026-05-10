@@ -83,6 +83,7 @@ let activeSearchTotal = 0;
 let activeSearchShown = 0;
 let activeCatalogTotalCount = 0;
 let backendApiAvailable = true;
+let backendSearchAvailable = true;
 const brandLogoMap = {
   "john deere": "assets/brands/john-deere.png",
   fendt: "assets/brands/fendt.png",
@@ -794,6 +795,46 @@ async function runGlobalSearch(query) {
   renderCatalogMeta();
 
   try {
+    if (backendApiAvailable && backendSearchAvailable) {
+      try {
+        const response = await fetch(
+          buildApiUrl("/search", {
+            q: query.trim(),
+            brand: activeBrandSlug,
+            limit: searchResultLimit
+          })
+        );
+
+        if (!response.ok) {
+          throw new Error(`Search API request failed: ${response.status}`);
+        }
+
+        const payload = await response.json();
+
+        if (requestId !== searchRequestId) {
+          return;
+        }
+
+        const shownResults = Array.isArray(payload.products) ? payload.products : [];
+        activeSearchTotal = Number(payload?.metadata?.total) || shownResults.length;
+        activeSearchShown = shownResults.length;
+        isSearchLoading = false;
+        productGrid.innerHTML = shownResults.map(productCardTemplate).join("");
+        refreshCards();
+        renderSavedStates();
+        if (sortSelect?.value && sortSelect.value !== "default") {
+          sortProducts();
+        }
+        applyFilters();
+        renderCatalogMeta();
+        renderIcons();
+        return;
+      } catch (error) {
+        console.warn(error);
+        backendSearchAvailable = false;
+      }
+    }
+
     await loadSearchIndex();
 
     const tokens = [...new Set(tokenizeSearchValue(normalizedQuery))];
