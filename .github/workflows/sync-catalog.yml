@@ -5,6 +5,10 @@ on:
     - cron: "18 */6 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: bartsparts-sync
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -24,22 +28,28 @@ jobs:
 
       - name: Sync catalog
         env:
-          BARTSPARTS_FEED_URL: ${{ secrets.BARTSPARTS_FEED_URL }}
           BARTSPARTS_BRANDS: ${{ vars.BARTSPARTS_BRANDS || 'john-deere,fendt,case-ih,new-holland,claas,krone' }}
-          BARTSPARTS_MAX_PAGES: ${{ vars.BARTSPARTS_MAX_PAGES || '500' }}
-          BARTSPARTS_REQUEST_DELAY_MS: ${{ vars.BARTSPARTS_REQUEST_DELAY_MS || '1500' }}
           BARTSPARTS_LIMIT: ${{ vars.BARTSPARTS_LIMIT }}
+          BARTSPARTS_CHUNK_SIZE: ${{ vars.BARTSPARTS_CHUNK_SIZE || '1000' }}
+          BARTSPARTS_FEATURED_PER_BRAND: ${{ vars.BARTSPARTS_FEATURED_PER_BRAND || '12' }}
+          BARTSPARTS_PRICE_MARKUP: ${{ vars.BARTSPARTS_PRICE_MARKUP || '20' }}
+          BARTSPARTS_ENRICH_PER_RUN: ${{ vars.BARTSPARTS_ENRICH_PER_RUN || '2500' }}
+          BARTSPARTS_ENRICH_CONCURRENCY: ${{ vars.BARTSPARTS_ENRICH_CONCURRENCY || '4' }}
+          BARTSPARTS_REQUEST_DELAY_MS: ${{ vars.BARTSPARTS_REQUEST_DELAY_MS || '120' }}
+          BARTSPARTS_TRANSLATION_BATCH_SIZE: ${{ vars.BARTSPARTS_TRANSLATION_BATCH_SIZE || '40' }}
+          BARTSPARTS_ERROR_RETRY_HOURS: ${{ vars.BARTSPARTS_ERROR_RETRY_HOURS || '12' }}
+          BARTSPARTS_REFRESH_INDEX: ${{ vars.BARTSPARTS_REFRESH_INDEX || '0' }}
         run: node tools/sync-bartsparts.mjs
 
       - name: Commit updated catalog
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet data/catalog.json; then
+          if git diff --quiet data; then
             echo "Catalog did not change"
             exit 0
           fi
-          git add data/catalog.json
+          git add data
           git commit -m "Sync BartsParts catalog"
           git push origin main
           git push origin main:gh-pages
