@@ -1666,6 +1666,20 @@ h3 {
     display: none;
   }
 
+  #cartOpen {
+    width: 44px;
+    height: 44px;
+  }
+
+  #cartOpen > i,
+  #cartOpen > svg {
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+  }
+
   .brand small {
     display: none;
   }
