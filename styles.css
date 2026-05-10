@@ -912,6 +912,24 @@ h3 {
   font-weight: 800;
 }
 
+.page-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.page-number {
+  min-width: 44px;
+  justify-content: center;
+}
+
+.page-number.is-active {
+  border-color: rgba(41, 125, 145, 0.45);
+  color: var(--white);
+  background: var(--blue);
+}
+
 .selection-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
@@ -1119,6 +1137,13 @@ h3 {
   transition: transform 0.2s ease;
 }
 
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .product-modal.is-open .product-modal-card {
   transform: translateY(0) scale(1);
 }
@@ -1136,7 +1161,8 @@ h3 {
   min-height: 420px;
   place-items: center;
   overflow: hidden;
-  color: var(--white);
+  color: var(--ink);
+  background: #ffffff;
 }
 
 .detail-visual svg {
@@ -1161,27 +1187,19 @@ h3 {
 }
 
 .detail-visual.green {
-  background:
-    radial-gradient(circle at 20% 16%, rgba(203, 242, 74, 0.66), transparent 30%),
-    linear-gradient(135deg, #233927, #2f8a3a);
+  background: #ffffff;
 }
 
 .detail-visual.amber {
-  background:
-    radial-gradient(circle at 20% 16%, rgba(255, 221, 126, 0.64), transparent 30%),
-    linear-gradient(135deg, #56401e, #d99a2b);
+  background: #ffffff;
 }
 
 .detail-visual.blue {
-  background:
-    radial-gradient(circle at 20% 16%, rgba(160, 219, 230, 0.64), transparent 30%),
-    linear-gradient(135deg, #1d3d45, #297d91);
+  background: #ffffff;
 }
 
 .detail-visual.red {
-  background:
-    radial-gradient(circle at 20% 16%, rgba(252, 174, 131, 0.56), transparent 30%),
-    linear-gradient(135deg, #4e2c27, #b9573f);
+  background: #ffffff;
 }
 
 .detail-content {
@@ -1731,6 +1749,10 @@ h3 {
     min-width: 0;
   }
 
+  .page-numbers {
+    width: 100%;
+  }
+
   .sort-control,
   .sort-control select,
   .catalog-actions,
@@ -1774,6 +1796,17 @@ h3 {
 
   .product-actions .icon-button {
     width: 100%;
+  }
+
+  .detail-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .detail-actions .button,
+  .detail-actions a.button {
+    width: 100%;
+    justify-content: center;
   }
 
   .product-modal {

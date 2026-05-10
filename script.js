@@ -11,6 +11,7 @@ const catalogMetaText = document.querySelector("#catalogMetaText");
 const pagePrev = document.querySelector("#pagePrev");
 const pageNext = document.querySelector("#pageNext");
 const pageInfo = document.querySelector("#pageInfo");
+const pageNumbers = document.querySelector("#pageNumbers");
 const allBrandsCount = document.querySelector("#allBrandsCount");
 const catalogPagination = document.querySelector("#catalogPagination");
 const favoritesOnly = document.querySelector("#favoritesOnly");
@@ -53,6 +54,9 @@ const catalogIndexUrl = "data/catalog/index.json";
 const searchIndexUrl = "data/catalog/search/index.json";
 const searchResultLimit = 120;
 const searchDebounceMs = 180;
+const productsPerPage = 20;
+const maxVisiblePageButtons = 10;
+const catalogApiBase = `${window.location.origin}/api`;
 
 let activeFilter = "all";
 let activeBrand = "all";
@@ -76,6 +80,8 @@ let isSearchLoading = false;
 let activeSearchQuery = "";
 let activeSearchTotal = 0;
 let activeSearchShown = 0;
+let activeCatalogTotalCount = 0;
+let backendApiAvailable = true;
 const brandLogoMap = {
   "john deere": "assets/brands/john-deere.png",
   fendt: "assets/brands/fendt.png",
@@ -189,6 +195,20 @@ function getBrandLogoPath(brand) {
   return brandLogoMap[normalizeBrandKey(brand)] || "";
 }
 
+function buildApiUrl(path, query = null) {
+  const url = new URL(`${catalogApiBase}${path}`);
+
+  if (query && typeof query === "object") {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+
+  return url.toString();
+}
+
 function showToast(message) {
   clearTimeout(toastTimer);
   toast.textContent = message;
@@ -234,6 +254,7 @@ function getCardData(card) {
     sourcePrice: Number(card.dataset.sourcePrice),
     currency: card.dataset.currency || "BYN",
     brand,
+    brandSlug: card.dataset.brandSlug || "",
     category: card.dataset.category,
     sku: card.dataset.sku,
     icon: card.dataset.icon || "package",
@@ -246,7 +267,8 @@ function getCardData(card) {
     stock: card.dataset.stock || "Наличие и цена уточняются по запросу",
     visual: card.dataset.visual,
     weight: card.dataset.weight || "Уточняется",
-    warranty: card.dataset.warranty || "По условиям поставщика"
+    warranty: card.dataset.warranty || "По условиям поставщика",
+    url: card.dataset.url || ""
   };
 }
 
@@ -285,6 +307,7 @@ function productCardTemplate(product) {
       class="product-card"
       data-id="${escapeHtml(product.id)}"
       data-brand="${escapeHtml(brand)}"
+      data-brand-slug="${escapeHtml(product.brandSlug || "")}"
       data-category="${escapeHtml(product.category || "tractor")}"
       data-name="${escapeHtml(product.name)}"
       data-name-original="${escapeHtml(nameOriginal)}"
@@ -346,6 +369,81 @@ function getBrandInfo() {
   return catalogIndex.brands.find((brand) => brand.brandSlug === activeBrandSlug) || null;
 }
 
+function getCatalogChunkSize() {
+  return Number(catalogIndex?.metadata?.chunkSize) || 1000;
+}
+
+function clampPage(page, totalPages) {
+  const safeTotal = Math.max(1, Number(totalPages) || 1);
+  return Math.min(Math.max(1, Number(page) || 1), safeTotal);
+}
+
+function getTotalPagesByCount(count) {
+  return Math.max(1, Math.ceil((Number(count) || 0) / productsPerPage));
+}
+
+function getCurrentCatalogTotalPages() {
+  if (activeBrandSlug === "all") {
+    return getTotalPagesByCount(activeCatalogTotalCount);
+  }
+
+  const brandInfo = getBrandInfo();
+  return getTotalPagesByCount(brandInfo?.count || 0);
+}
+
+function getSourcePageForCatalogPage(page) {
+  const startIndex = (page - 1) * productsPerPage;
+  const chunkSize = getCatalogChunkSize();
+
+  return {
+    sourcePage: Math.floor(startIndex / chunkSize) + 1,
+    offset: startIndex % chunkSize
+  };
+}
+
+function getVisiblePageNumbers(current, total) {
+  const safeCurrent = Math.max(1, Number(current) || 1);
+  const safeTotal = Math.max(1, Number(total) || 1);
+  const visible = Math.min(maxVisiblePageButtons, safeTotal);
+  let start = safeCurrent - Math.floor(visible / 2);
+  let end = start + visible - 1;
+
+  if (start < 1) {
+    start = 1;
+    end = visible;
+  }
+
+  if (end > safeTotal) {
+    end = safeTotal;
+    start = Math.max(1, end - visible + 1);
+  }
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+function renderPageNumbers(totalPages) {
+  if (!pageNumbers) {
+    return;
+  }
+
+  const pages = getVisiblePageNumbers(currentPage, totalPages);
+  pageNumbers.innerHTML = pages
+    .map((page) => {
+      const isActive = page === currentPage;
+      return `
+        <button
+          class="button ghost compact page-number${isActive ? " is-active" : ""}"
+          type="button"
+          data-page-number="${page}"
+          ${isActive ? 'aria-current="page"' : ""}
+        >
+          ${page}
+        </button>
+      `;
+    })
+    .join("");
+}
+
 function renderCatalogMeta(visibleCount = null) {
   if (isSearchMode) {
     const minQueryLength = getSearchMinQueryLength();
@@ -396,19 +494,25 @@ function renderCatalogMeta(visibleCount = null) {
   }
 
   const brandInfo = getBrandInfo();
+  const totalPages = getCurrentCatalogTotalPages();
 
   if (!brandInfo) {
     catalogMetaTitle.textContent = "Витрина брендов";
-    catalogMetaText.textContent = `Показаны стартовые товары. Цены на сайте рассчитаны как BartsParts +20%.`;
-    catalogPagination.hidden = true;
+    catalogMetaText.textContent = `Показаны товары из витрины. На странице ${productsPerPage} позиций.`;
+    pageInfo.textContent = `Страница ${currentPage} из ${totalPages}`;
+    pagePrev.disabled = currentPage <= 1;
+    pageNext.disabled = currentPage >= totalPages;
+    renderPageNumbers(totalPages);
+    catalogPagination.hidden = false;
     return;
   }
 
   catalogMetaTitle.textContent = brandInfo.brand;
   catalogMetaText.textContent = `${brandInfo.count.toLocaleString("ru-RU")} товаров в каталоге BartsParts, цены на сайте: +20%`;
-  pageInfo.textContent = `Страница ${currentPage} из ${brandInfo.pages}`;
+  pageInfo.textContent = `Страница ${currentPage} из ${totalPages}`;
   pagePrev.disabled = currentPage <= 1;
-  pageNext.disabled = currentPage >= brandInfo.pages;
+  pageNext.disabled = currentPage >= totalPages;
+  renderPageNumbers(totalPages);
   catalogPagination.hidden = false;
 }
 
@@ -437,7 +541,27 @@ function updateBrandCounts() {
 }
 
 async function loadCatalogIndex() {
-  const response = await fetch(`${catalogIndexUrl}?v=${Date.now()}`);
+  let response;
+
+  if (backendApiAvailable) {
+    try {
+      response = await fetch(buildApiUrl("/catalog-index"));
+
+      if (!response.ok) {
+        throw new Error(`Catalog API request failed: ${response.status}`);
+      }
+
+      catalogIndex = await response.json();
+      updateBrandCounts();
+      renderCatalogMeta();
+      return;
+    } catch (error) {
+      console.warn(error);
+      backendApiAvailable = false;
+    }
+  }
+
+  response = await fetch(`${catalogIndexUrl}?v=${Date.now()}`);
 
   if (!response.ok) {
     throw new Error(`Catalog index request failed: ${response.status}`);
@@ -505,18 +629,80 @@ async function loadSearchShard(prefix) {
 
 async function loadCatalogPage() {
   try {
-    const url =
-      activeBrandSlug === "all"
-        ? catalogUrl
-        : `data/catalog/${activeBrandSlug}/page-${currentPage}.json`;
-    const response = await fetch(`${url}?v=${Date.now()}`);
+    if (backendApiAvailable) {
+      try {
+        const response = await fetch(
+          buildApiUrl("/catalog-page", {
+            brand: activeBrandSlug,
+            page: currentPage,
+            perPage: productsPerPage
+          })
+        );
 
-    if (!response.ok) {
-      throw new Error(`Catalog request failed: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`Catalog API page request failed: ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const products = Array.isArray(payload.products) ? payload.products : [];
+        activeCatalogTotalCount = Number(payload?.metadata?.count) || products.length;
+        currentPage = clampPage(Number(payload?.metadata?.page) || currentPage, Number(payload?.metadata?.pages) || 1);
+
+        isSearchMode = false;
+        isSearchLoading = false;
+        activeSearchTotal = 0;
+        activeSearchShown = products.length;
+        productGrid.innerHTML = products.map(productCardTemplate).join("");
+        refreshCards();
+        renderSavedStates();
+        if (sortSelect?.value && sortSelect.value !== "default") {
+          sortProducts();
+        }
+        applyFilters();
+        renderCatalogMeta();
+        renderIcons();
+        return;
+      } catch (error) {
+        console.warn(error);
+        backendApiAvailable = false;
+      }
     }
 
-    const catalog = await response.json();
-    const products = Array.isArray(catalog.products) ? catalog.products : [];
+    let products = [];
+
+    if (activeBrandSlug === "all") {
+      const response = await fetch(`${catalogUrl}?v=${Date.now()}`);
+
+      if (!response.ok) {
+        throw new Error(`Catalog request failed: ${response.status}`);
+      }
+
+      const catalog = await response.json();
+      const allProducts = Array.isArray(catalog.products) ? catalog.products : [];
+      activeCatalogTotalCount = allProducts.length;
+      currentPage = clampPage(currentPage, getCurrentCatalogTotalPages());
+      const startIndex = (currentPage - 1) * productsPerPage;
+      products = allProducts.slice(startIndex, startIndex + productsPerPage);
+    } else {
+      const brandInfo = getBrandInfo();
+
+      if (!brandInfo) {
+        throw new Error("Brand info is missing");
+      }
+
+      activeCatalogTotalCount = Number(brandInfo.count) || 0;
+      currentPage = clampPage(currentPage, getCurrentCatalogTotalPages());
+      const { sourcePage, offset } = getSourcePageForCatalogPage(currentPage);
+      const response = await fetch(`data/catalog/${activeBrandSlug}/page-${sourcePage}.json?v=${Date.now()}`);
+
+      if (!response.ok) {
+        throw new Error(`Catalog request failed: ${response.status}`);
+      }
+
+      const catalog = await response.json();
+      const sourceProducts = Array.isArray(catalog.products) ? catalog.products : [];
+      products = sourceProducts.slice(offset, offset + productsPerPage);
+    }
 
     isSearchMode = false;
     isSearchLoading = false;
@@ -1020,13 +1206,30 @@ pagePrev?.addEventListener("click", () => {
 });
 
 pageNext?.addEventListener("click", () => {
-  const brandInfo = getBrandInfo();
+  const totalPages = getCurrentCatalogTotalPages();
 
-  if (!brandInfo || currentPage >= brandInfo.pages) {
+  if (currentPage >= totalPages) {
     return;
   }
 
   currentPage += 1;
+  loadCatalogPage();
+});
+
+pageNumbers?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-page-number]");
+
+  if (!button) {
+    return;
+  }
+
+  const targetPage = Number(button.dataset.pageNumber);
+
+  if (!Number.isFinite(targetPage) || targetPage < 1 || targetPage === currentPage) {
+    return;
+  }
+
+  currentPage = targetPage;
   loadCatalogPage();
 });
 

@@ -17,7 +17,6 @@ const chunkSize = getNumberEnv("BARTSPARTS_CHUNK_SIZE", 1000);
 const featuredPerBrand = getNumberEnv("BARTSPARTS_FEATURED_PER_BRAND", 12);
 const limit = getNumberEnv("BARTSPARTS_LIMIT", 0, { allowZero: true });
 const requestDelayMs = getNumberEnv("BARTSPARTS_REQUEST_DELAY_MS", 120);
-const translationBatchSize = getNumberEnv("BARTSPARTS_TRANSLATION_BATCH_SIZE", 40);
 const priceMarkup = getPercentEnv("BARTSPARTS_PRICE_MARKUP", 20);
 const enrichPerRun = getNumberEnv("BARTSPARTS_ENRICH_PER_RUN", 2500, { allowZero: true });
 const enrichConcurrency = getNumberEnv("BARTSPARTS_ENRICH_CONCURRENCY", 4);
@@ -582,64 +581,6 @@ function parseProductDetails(html, entry) {
   };
 }
 
-async function translateBatch(batch) {
-  const source = batch.map((item) => item.replace(/\s+/g, " ").trim()).join("\n");
-  const url = new URL("https://translate.googleapis.com/translate_a/single");
-
-  url.searchParams.set("client", "gtx");
-  url.searchParams.set("sl", "auto");
-  url.searchParams.set("tl", "ru");
-  url.searchParams.set("dt", "t");
-  url.searchParams.set("q", source);
-
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(20000),
-    headers: {
-      accept: "application/json,text/plain,*/*",
-      "accept-language": "ru,en;q=0.9",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Translation request failed: ${response.status}`);
-  }
-
-  const payload = await response.json();
-  const translatedText = Array.isArray(payload?.[0])
-    ? payload[0].map((item) => item?.[0] || "").join("")
-    : "";
-  const translatedLines = translatedText.split("\n").map((item) => item.trim());
-
-  return batch.map((original, index) => translatedLines[index] || original);
-}
-
-async function translateNames(names) {
-  const unique = [...new Set(names.map((item) => cleanText(item)).filter(Boolean))];
-  const map = new Map();
-
-  for (let index = 0; index < unique.length; index += translationBatchSize) {
-    const batch = unique.slice(index, index + translationBatchSize);
-
-    try {
-      const translated = await translateBatch(batch);
-      batch.forEach((source, batchIndex) => {
-        map.set(source, translated[batchIndex] || source);
-      });
-    } catch (error) {
-      console.warn(`Translation fallback at batch ${index}: ${error.message}`);
-      batch.forEach((source) => {
-        map.set(source, source);
-      });
-    }
-
-    await sleep(Math.max(100, requestDelayMs));
-  }
-
-  return map;
-}
-
 async function enrichTargets(targets, cacheByBrand) {
   const results = [];
   let pointer = 0;
@@ -673,9 +614,6 @@ async function enrichTargets(targets, cacheByBrand) {
 
   const workers = Array.from({ length: Math.max(1, enrichConcurrency) }, () => worker());
   await Promise.all(workers);
-
-  const namesToTranslate = results.filter((item) => item.ok).map((item) => item.details.nameOriginal);
-  const translatedNames = await translateNames(namesToTranslate);
   const nowIso = toIsoDate();
   const retryAt = toIsoDate(new Date(Date.now() + retryErrorHours * 60 * 60 * 1000));
 
@@ -685,14 +623,13 @@ async function enrichTargets(targets, cacheByBrand) {
 
     if (result.ok) {
       const sourceName = cleanText(result.details.nameOriginal);
-      const translatedName = translatedNames.get(sourceName) || sourceName;
 
       brandCache[result.entry.sku] = {
         ...previous,
         sku: result.entry.sku,
         url: result.entry.url,
         nameOriginal: sourceName,
-        name: translatedName,
+        name: sourceName,
         sourcePrice: result.details.sourcePrice,
         currency: result.details.currency || "EUR",
         status: "ok",
@@ -733,7 +670,7 @@ function buildProducts(indexByBrand, cacheByBrand) {
       const nameOriginal = cleanText(cached.nameOriginal || entry.sku);
       const sourcePrice = Number(cached.sourcePrice) || 0;
       const price = sourcePrice > 0 ? roundMoney(sourcePrice * (1 + priceMarkup)) : 0;
-      const name = cleanText(cached.name || cached.nameOriginal || `${brandInfo.label} ${entry.sku}`);
+      const name = cleanText(cached.nameOriginal || cached.name || `${brandInfo.label} ${entry.sku}`);
       const category = inferCategory(nameOriginal);
 
       totalProducts += 1;

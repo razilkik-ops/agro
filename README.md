@@ -8,6 +8,29 @@
 
 Точка входа: `index.html`.
 
+## Backend режим (цены сразу на карточках)
+
+Добавлен сервер `server.mjs`, который:
+
+1. раздает сайт и API с одного origin;
+2. берет товары по странице (`20` шт);
+3. на сервере подтягивает цены/названия из BartsParts и пишет результат в `data/bartsparts/cache/*.json`.
+
+Запуск:
+
+```bash
+node server.mjs
+```
+
+По умолчанию сервер стартует на `http://localhost:8787`.
+Основные env для API:
+
+- `PORT` (по умолчанию `8787`)
+- `API_PRODUCTS_PER_PAGE` (по умолчанию `20`)
+- `API_ENRICH_CONCURRENCY` (по умолчанию `6`)
+- `API_REQUEST_DELAY_MS` (по умолчанию `40`)
+- `API_PRICE_CACHE_TTL_MS` (по умолчанию `10800000`, 3 часа)
+
 ## Синхронизация каталога BartsParts
 
 Скрипт `tools/sync-bartsparts.mjs` работает в 3 этапа:

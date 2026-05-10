@@ -379,6 +379,7 @@
             Назад
           </button>
           <span id="pageInfo">Страница 1 из 1</span>
+          <div class="page-numbers" id="pageNumbers" aria-label="Номера страниц"></div>
           <button class="button ghost compact" id="pageNext" type="button">
             Вперёд
             <i data-lucide="chevron-right"></i>
@@ -561,10 +562,12 @@
           </dl>
           <div class="detail-bottom">
             <strong id="detailPrice">0 BYN</strong>
-            <button class="button primary" id="detailAdd" type="button">
-              <i data-lucide="shopping-cart"></i>
-              Добавить в корзину
-            </button>
+            <div class="detail-actions">
+              <button class="button primary" id="detailAdd" type="button">
+                <i data-lucide="shopping-cart"></i>
+                Добавить в корзину
+              </button>
+            </div>
           </div>
         </div>
       </div>
