@@ -695,7 +695,7 @@ function buildProducts(indexByBrand, cacheByBrand) {
         price,
         sourcePrice,
         currency: cached.currency || "EUR",
-        stock: sourcePrice > 0 ? "Цена обновлена с BartsParts" : "Цена по запросу",
+        stock: sourcePrice > 0 ? "Цена обновлена" : "Цена по запросу",
         url: entry.url
       };
     });

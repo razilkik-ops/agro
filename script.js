@@ -147,6 +147,14 @@ function normalizeSearchValue(value = "") {
     .trim();
 }
 
+function stripSupplierMention(value = "") {
+  return String(value)
+    .replace(/\s+с\s+bartsparts/gi, "")
+    .replace(/bartsparts/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function tokenizeSearchValue(value = "") {
   return normalizeSearchValue(value)
     .split(" ")
@@ -246,9 +254,10 @@ function saveList(key, list) {
 function getCardData(card) {
   const brand = card.dataset.brand;
   const nameOriginal = card.dataset.nameOriginal || card.dataset.name;
+  const displayName = nameOriginal || card.dataset.name;
   return {
     id: card.dataset.id,
-    name: card.dataset.name,
+    name: displayName,
     nameOriginal,
     price: Number(card.dataset.price),
     sourcePrice: Number(card.dataset.sourcePrice),
@@ -258,13 +267,9 @@ function getCardData(card) {
     category: card.dataset.category,
     sku: card.dataset.sku,
     icon: card.dataset.icon || "package",
-    description:
-      card.dataset.description ||
-      (nameOriginal && nameOriginal !== card.dataset.name
-        ? `Оригинальное название: ${nameOriginal}`
-        : `Деталь ${brand} из синхронизируемого каталога. Подробности и совместимость уточняются у менеджера.`),
+    description: stripSupplierMention(card.dataset.description) || `Деталь ${brand}. Подробности и совместимость уточняются у менеджера.`,
     compatible: card.dataset.compatible || brand,
-    stock: card.dataset.stock || "Наличие и цена уточняются по запросу",
+    stock: stripSupplierMention(card.dataset.stock) || "Наличие и цена уточняются по запросу",
     visual: card.dataset.visual,
     weight: card.dataset.weight || "Уточняется",
     warranty: card.dataset.warranty || "По условиям поставщика",
@@ -278,21 +283,18 @@ function productCardTemplate(product) {
   const price = Number(product.price) || 0;
   const sourcePrice = Number(product.sourcePrice) || 0;
   const currency = product.currency || "EUR";
-  const brand = product.brand || "BartsParts";
+  const brand = product.brand || "Каталог";
   const brandLogo = getBrandLogoPath(brand);
   const nameOriginal = product.nameOriginal || product.name;
+  const displayName = nameOriginal || product.name;
   const description =
-    product.description ||
-    (nameOriginal && nameOriginal !== product.name
-      ? `Оригинальное название: ${nameOriginal}`
-      : `Деталь ${brand} из каталога BartsParts. Для цены и совместимости отправьте запрос менеджеру.`);
+    stripSupplierMention(product.description) || `Деталь ${brand}. Для цены и совместимости отправьте запрос менеджеру.`;
   const compatible = product.compatible || brand;
-  const stock = product.stock || "Наличие и цена уточняются по запросу";
+  const stock = stripSupplierMention(product.stock) || "Наличие и цена уточняются по запросу";
   const weight = product.weight || "Уточняется";
   const warranty = product.warranty || "По условиям поставщика";
   const subtitle = buildProductSubtitle(brand, product.sku);
-  const helperText =
-    nameOriginal && nameOriginal !== product.name ? `Оригинал: ${nameOriginal}` : description;
+  const helperText = description;
   const stockLabel =
     stock && !String(stock).toLowerCase().includes("уточ")
       ? "Цена обновлена"
@@ -309,7 +311,7 @@ function productCardTemplate(product) {
       data-brand="${escapeHtml(brand)}"
       data-brand-slug="${escapeHtml(product.brandSlug || "")}"
       data-category="${escapeHtml(product.category || "tractor")}"
-      data-name="${escapeHtml(product.name)}"
+      data-name="${escapeHtml(displayName)}"
       data-name-original="${escapeHtml(nameOriginal)}"
       data-price="${price}"
       data-source-price="${sourcePrice}"
@@ -338,7 +340,7 @@ function productCardTemplate(product) {
           </button>
         </div>
         <span class="tag">${escapeHtml(stockLabel)}</span>
-        <h3>${escapeHtml(product.name)}</h3>
+        <h3>${escapeHtml(displayName)}</h3>
         <div class="product-meta-line">${escapeHtml(subtitle)}</div>
         <p>${escapeHtml(helperText)}</p>
         <div class="product-bottom">
@@ -456,7 +458,7 @@ function renderCatalogMeta(visibleCount = null) {
       : "Глобальный поиск по каталогу";
 
     if (isSearchLoading) {
-      catalogMetaText.textContent = "Ищем товары по всему каталогу BartsParts...";
+      catalogMetaText.textContent = "Ищем товары по всему каталогу...";
       catalogPagination.hidden = true;
       return;
     }
@@ -508,7 +510,7 @@ function renderCatalogMeta(visibleCount = null) {
   }
 
   catalogMetaTitle.textContent = brandInfo.brand;
-  catalogMetaText.textContent = `${brandInfo.count.toLocaleString("ru-RU")} товаров в каталоге BartsParts, цены на сайте: +20%`;
+  catalogMetaText.textContent = `${brandInfo.count.toLocaleString("ru-RU")} товаров в каталоге.`;
   pageInfo.textContent = `Страница ${currentPage} из ${totalPages}`;
   pagePrev.disabled = currentPage <= 1;
   pageNext.disabled = currentPage >= totalPages;
@@ -1148,11 +1150,8 @@ function openProduct(card) {
     detailVisual.append(detailBrandLogo);
   }
   detailSku.textContent = `${selectedProduct.brand} · Артикул ${selectedProduct.sku}`;
-  detailTitle.textContent = selectedProduct.name;
-  detailDescription.textContent =
-    selectedProduct.nameOriginal && selectedProduct.nameOriginal !== selectedProduct.name
-      ? `Оригинальное название: ${selectedProduct.nameOriginal}`
-      : selectedProduct.description;
+  detailTitle.textContent = selectedProduct.nameOriginal || selectedProduct.name;
+  detailDescription.textContent = selectedProduct.description || `Деталь ${selectedProduct.brand}.`;
   detailCompatible.textContent = selectedProduct.compatible;
   detailStock.textContent = selectedProduct.stock;
   detailPrice.textContent = formatCatalogPrice(selectedProduct.price, selectedProduct.currency);

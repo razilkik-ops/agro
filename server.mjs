@@ -219,7 +219,7 @@ function patchProductFromCache(product, cacheItem, markupRate) {
     sourcePrice,
     price,
     currency: cacheItem?.currency || product.currency || "EUR",
-    stock: sourcePrice > 0 ? "Цена обновлена с BartsParts" : product.stock || "Цена уточняется"
+    stock: sourcePrice > 0 ? "Цена обновлена" : product.stock || "Цена уточняется"
   };
 }
 
