@@ -1781,21 +1781,57 @@ h3 {
   }
 
   .product-card {
+    grid-template-columns: 92px minmax(0, 1fr);
+    grid-template-rows: 1fr;
     min-height: auto;
   }
 
-  .product-bottom,
+  .product-visual {
+    min-height: 100%;
+  }
+
+  .card-tools,
+  .tag,
+  .product-meta-line,
+  .product-info p {
+    display: none;
+  }
+
+  .product-info {
+    gap: 8px;
+    padding: 12px 12px 12px 10px;
+  }
+
+  .product-info h3 {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.25;
+  }
+
+  .product-bottom {
+    margin-top: 0;
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .product-bottom strong {
+    font-size: 18px;
+    line-height: 1.2;
+  }
+
   .detail-bottom {
     align-items: stretch;
     flex-direction: column;
   }
 
   .product-actions {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .product-actions .icon-button {
-    width: 100%;
+    width: 40px;
+    height: 40px;
   }
 
   .detail-actions {
