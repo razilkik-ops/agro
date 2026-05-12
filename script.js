@@ -131,7 +131,9 @@ const catalogIndexUrl = "data/catalog/index.json";
 const apiCatalogIndexUrl = "/api/catalog-index";
 const apiCatalogPageUrl = "/api/catalog-page";
 const apiSearchUrl = "/api/search";
-const resultLimit = 60;
+const productsPerPage = 20;
+const paginationButtonCount = 10;
+const searchResultLimit = productsPerPage * paginationButtonCount;
 
 const homePage = document.querySelector("#homePage");
 const brandPage = document.querySelector("#brandPage");
@@ -140,6 +142,7 @@ const brandPageLogo = document.querySelector("#brandPageLogo");
 const backToHome = document.querySelector("#backToHome");
 const brandList = document.querySelector("#brandList");
 const catalogGrid = document.querySelector("#catalogGrid");
+const catalogPagination = document.querySelector("#catalogPagination");
 const emptyState = document.querySelector("#emptyState");
 const resultMeta = document.querySelector("#resultMeta");
 const heroSearchForm = document.querySelector("#heroSearchForm");
@@ -162,6 +165,16 @@ let searchShardByPrefix = new Map();
 let searchShardCache = new Map();
 let toastTimer = null;
 let searchTimer = null;
+let paginationState = {
+  mode: "none",
+  brandSlug: "",
+  query: "",
+  currentPage: 1,
+  totalPages: 1,
+  totalCount: 0,
+  metaText: "",
+  pageItemsAlreadySliced: false,
+};
 
 function renderIcons() {
   if (window.lucide) {
@@ -340,12 +353,84 @@ function showBrandPage(brandSlug = "") {
   renderIcons();
 }
 
-function renderCatalog(items, metaText = "Популярные позиции") {
+function clampPage(page, totalPages) {
+  return Math.min(Math.max(1, Number(page) || 1), Math.max(1, totalPages));
+}
+
+function getPageWindow(currentPage, totalPages) {
+  const visibleCount = Math.min(paginationButtonCount, totalPages);
+  let start = currentPage - Math.floor(visibleCount / 2);
+  start = Math.max(1, Math.min(start, totalPages - visibleCount + 1));
+
+  return Array.from({ length: visibleCount }, (_, index) => start + index);
+}
+
+function renderPagination() {
+  const { currentPage, totalPages, totalCount } = paginationState;
+
+  if (!totalCount || totalPages <= 1) {
+    catalogPagination.hidden = true;
+    catalogPagination.innerHTML = "";
+    return;
+  }
+
+  const start = (currentPage - 1) * productsPerPage + 1;
+  const end = Math.min(currentPage * productsPerPage, totalCount);
+  const pages = getPageWindow(currentPage, totalPages);
+
+  catalogPagination.hidden = false;
+  catalogPagination.innerHTML = `
+    <span class="pagination-summary">Показано ${start}-${end} из ${totalCount.toLocaleString("ru-RU")}</span>
+    <div class="pagination-controls">
+      <button class="pagination-button" type="button" data-page="${currentPage - 1}" aria-label="Предыдущая страница" ${currentPage === 1 ? "disabled" : ""}>
+        <i data-lucide="chevron-left"></i>
+      </button>
+      ${pages
+        .map(
+          (page) => `
+            <button class="pagination-button ${page === currentPage ? "is-active" : ""}" type="button" data-page="${page}" aria-label="Страница ${page}">
+              ${page}
+            </button>
+          `,
+        )
+        .join("")}
+      <button class="pagination-button" type="button" data-page="${currentPage + 1}" aria-label="Следующая страница" ${currentPage === totalPages ? "disabled" : ""}>
+        <i data-lucide="chevron-right"></i>
+      </button>
+    </div>
+  `;
+  renderIcons();
+}
+
+function renderCatalog(items, metaText = "Популярные позиции", options = {}) {
   allVisibleParts = items.map(normalizePart);
   brandPage.hidden = false;
 
-  catalogGrid.innerHTML = allVisibleParts
-    .slice(0, resultLimit)
+  const totalCount = Number(options.totalCount || allVisibleParts.length);
+  const totalPages = Math.max(
+    1,
+    Number(options.totalPages || Math.ceil(totalCount / productsPerPage)),
+  );
+  const currentPage = clampPage(options.currentPage || 1, totalPages);
+  const pageItems = options.pageItemsAlreadySliced
+    ? allVisibleParts
+    : allVisibleParts.slice(
+        (currentPage - 1) * productsPerPage,
+        currentPage * productsPerPage,
+      );
+
+  paginationState = {
+    mode: options.mode || "local",
+    brandSlug: options.brandSlug || activeBrandSlug,
+    query: options.query || "",
+    currentPage,
+    totalPages,
+    totalCount,
+    metaText,
+    pageItemsAlreadySliced: Boolean(options.pageItemsAlreadySliced),
+  };
+
+  catalogGrid.innerHTML = pageItems
     .map(
       (part) => `
         <article class="part-row">
@@ -370,24 +455,36 @@ function renderCatalog(items, metaText = "Популярные позиции") 
     )
     .join("");
 
-  const limitedText =
-    allVisibleParts.length > resultLimit ? `, показано ${resultLimit}` : "";
-  resultMeta.textContent = `${metaText}: ${allVisibleParts.length}${limitedText}`;
-  emptyState.hidden = allVisibleParts.length > 0;
-  catalogGrid.hidden = allVisibleParts.length === 0;
+  resultMeta.textContent = `${metaText}: ${totalCount.toLocaleString("ru-RU")}`;
+  emptyState.hidden = totalCount > 0;
+  catalogGrid.hidden = totalCount === 0;
+  renderPagination();
 }
 
 function clearCatalog(metaText = "Выберите фирму или введите артикул") {
   allVisibleParts = [];
   catalogGrid.innerHTML = "";
   catalogGrid.hidden = true;
+  catalogPagination.hidden = true;
+  catalogPagination.innerHTML = "";
   emptyState.hidden = true;
   resultMeta.textContent = metaText;
+  paginationState = {
+    mode: "none",
+    brandSlug: "",
+    query: "",
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    metaText,
+    pageItemsAlreadySliced: false,
+  };
 }
 
 function setLoading(message) {
   brandPage.hidden = false;
   resultMeta.textContent = message;
+  catalogPagination.hidden = true;
   emptyState.hidden = true;
 }
 
@@ -515,7 +612,7 @@ async function searchParts(query) {
   try {
     const params = new URLSearchParams({
       q: query,
-      limit: String(resultLimit),
+      limit: String(searchResultLimit),
     });
 
     if (activeBrandSlug) {
@@ -529,7 +626,11 @@ async function searchParts(query) {
         list.findIndex((item) => item.id === part.id) === index,
     );
 
-    renderCatalog(merged, `По запросу «${query.trim()}» найдено`);
+    renderCatalog(merged, `По запросу «${query.trim()}» найдено`, {
+      mode: "search",
+      query,
+      currentPage: 1,
+    });
     return;
   } catch {
     // Static files remain the fallback for GitHub Pages and plain file hosting.
@@ -554,13 +655,21 @@ async function searchParts(query) {
         list.findIndex((item) => item.id === part.id) === index,
     );
 
-    renderCatalog(merged, `По запросу «${query.trim()}» найдено`);
+    renderCatalog(merged, `По запросу «${query.trim()}» найдено`, {
+      mode: "search",
+      query,
+      currentPage: 1,
+    });
   } catch {
-    renderCatalog(localResults, `По запросу «${query.trim()}» найдено`);
+    renderCatalog(localResults, `По запросу «${query.trim()}» найдено`, {
+      mode: "search",
+      query,
+      currentPage: 1,
+    });
   }
 }
 
-async function showBrandProducts(brandSlug) {
+async function showBrandProducts(brandSlug, page = 1) {
   showBrandPage(brandSlug);
   brandSearchInput.value = "";
   renderBrandList(catalogIndex?.brands || []);
@@ -569,7 +678,8 @@ async function showBrandProducts(brandSlug) {
   try {
     const params = new URLSearchParams({
       brand: brandSlug,
-      page: "1",
+      page: String(page),
+      perPage: String(productsPerPage),
     });
     const data = await loadFirstJson([
       `${apiCatalogPageUrl}?${params.toString()}`,
@@ -577,10 +687,24 @@ async function showBrandProducts(brandSlug) {
     ]);
     const brandName = data.metadata?.brand || "Выбранная фирма";
     const products = (data.products || []).map(normalizePart);
-    renderCatalog(products, `${brandName}, первая страница каталога`);
+    const isApiPage = Number(data.metadata?.productsPerPage) > 0;
+    renderCatalog(products, `${brandName}, каталог`, {
+      mode: isApiPage ? "brand-api" : "brand-static",
+      brandSlug,
+      currentPage: isApiPage ? Number(data.metadata?.page || page) : 1,
+      totalPages: isApiPage
+        ? Number(data.metadata?.pages || 1)
+        : Math.ceil(products.length / productsPerPage),
+      totalCount: isApiPage ? Number(data.metadata?.count || products.length) : products.length,
+      pageItemsAlreadySliced: isApiPage,
+    });
   } catch {
     const fallback = demoParts.filter((part) => part.brandSlug === brandSlug);
-    renderCatalog(fallback, "Демо-детали фирмы");
+    renderCatalog(fallback, "Демо-детали фирмы", {
+      mode: "brand-static",
+      brandSlug,
+      currentPage: 1,
+    });
   }
 }
 
@@ -630,6 +754,30 @@ function showToast(message) {
   }, 2800);
 }
 
+async function goToCatalogPage(page) {
+  const nextPage = clampPage(page, paginationState.totalPages);
+
+  if (nextPage === paginationState.currentPage) {
+    return;
+  }
+
+  closeDetail();
+
+  if (paginationState.mode === "brand-api") {
+    await showBrandProducts(paginationState.brandSlug, nextPage);
+    return;
+  }
+
+  renderCatalog(allVisibleParts, paginationState.metaText, {
+    mode: paginationState.mode,
+    brandSlug: paginationState.brandSlug,
+    query: paginationState.query,
+    currentPage: nextPage,
+    totalPages: paginationState.totalPages,
+    totalCount: paginationState.totalCount,
+  });
+}
+
 heroSearchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   activeBrandSlug = "";
@@ -677,6 +825,16 @@ catalogGrid.addEventListener("click", (event) => {
   if (orderButton) {
     openDetail(orderButton.dataset.order, true);
   }
+});
+
+catalogPagination.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-page]");
+
+  if (!button || button.disabled) {
+    return;
+  }
+
+  goToCatalogPage(Number(button.dataset.page));
 });
 
 closeDetailButton.addEventListener("click", closeDetail);
