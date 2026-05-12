@@ -337,8 +337,8 @@ h3 {
 .brand-list {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  width: min(760px, 100%);
-  gap: 12px;
+  width: min(1180px, 100%);
+  gap: 14px;
   margin: 10px auto 18px;
   padding: 0;
 }
@@ -346,12 +346,12 @@ h3 {
 .brand-row {
   position: relative;
   display: block;
-  aspect-ratio: 1;
+  aspect-ratio: 2.15 / 1;
   min-width: 0;
-  min-height: 112px;
-  padding: 14px;
+  min-height: 86px;
+  padding: 16px 22px;
   border: 1px solid #e2e8e1;
-  border-radius: 18px;
+  border-radius: 999px;
   background: #ffffff;
   color: var(--ink);
   text-align: center;
@@ -376,8 +376,8 @@ h3 {
   top: 50%;
   left: 50%;
   display: grid;
-  width: 78%;
-  height: 54%;
+  width: 74%;
+  height: 48%;
   place-items: center;
   overflow: hidden;
   border: 0;
