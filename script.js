@@ -142,7 +142,9 @@ const brandPageLogo = document.querySelector("#brandPageLogo");
 const backToHome = document.querySelector("#backToHome");
 const brandList = document.querySelector("#brandList");
 const catalogGrid = document.querySelector("#catalogGrid");
-const catalogPagination = document.querySelector("#catalogPagination");
+const catalogPaginationTop = document.querySelector("#catalogPaginationTop");
+const catalogPaginationBottom = document.querySelector("#catalogPaginationBottom");
+const catalogPaginationBlocks = [catalogPaginationTop, catalogPaginationBottom];
 const emptyState = document.querySelector("#emptyState");
 const resultMeta = document.querySelector("#resultMeta");
 const heroSearchForm = document.querySelector("#heroSearchForm");
@@ -369,8 +371,10 @@ function renderPagination() {
   const { currentPage, totalPages, totalCount } = paginationState;
 
   if (!totalCount || totalPages <= 1) {
-    catalogPagination.hidden = true;
-    catalogPagination.innerHTML = "";
+    catalogPaginationBlocks.forEach((block) => {
+      block.hidden = true;
+      block.innerHTML = "";
+    });
     return;
   }
 
@@ -378,27 +382,36 @@ function renderPagination() {
   const end = Math.min(currentPage * productsPerPage, totalCount);
   const pages = getPageWindow(currentPage, totalPages);
 
-  catalogPagination.hidden = false;
-  catalogPagination.innerHTML = `
-    <span class="pagination-summary">Показано ${start}-${end} из ${totalCount.toLocaleString("ru-RU")}</span>
-    <div class="pagination-controls">
-      <button class="pagination-button" type="button" data-page="${currentPage - 1}" aria-label="Предыдущая страница" ${currentPage === 1 ? "disabled" : ""}>
+  const html = `
+    <div class="pagination-summary">
+      <span class="pagination-kicker">Каталог</span>
+      <strong>Показано ${start}-${end}</strong>
+      <span>из ${totalCount.toLocaleString("ru-RU")} товаров</span>
+    </div>
+    <div class="pagination-controls" role="group" aria-label="Выбор страницы">
+      <button class="pagination-button pagination-arrow" type="button" data-page="${currentPage - 1}" aria-label="Предыдущая страница" ${currentPage === 1 ? "disabled" : ""}>
         <i data-lucide="chevron-left"></i>
       </button>
-      ${pages
-        .map(
-          (page) => `
-            <button class="pagination-button ${page === currentPage ? "is-active" : ""}" type="button" data-page="${page}" aria-label="Страница ${page}">
-              ${page}
-            </button>
-          `,
-        )
-        .join("")}
-      <button class="pagination-button" type="button" data-page="${currentPage + 1}" aria-label="Следующая страница" ${currentPage === totalPages ? "disabled" : ""}>
+      <div class="pagination-pages">
+        ${pages
+          .map(
+            (page) => `
+              <button class="pagination-button ${page === currentPage ? "is-active" : ""}" type="button" data-page="${page}" aria-label="Страница ${page}" ${page === currentPage ? 'aria-current="page"' : ""}>
+                ${page}
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+      <button class="pagination-button pagination-arrow" type="button" data-page="${currentPage + 1}" aria-label="Следующая страница" ${currentPage === totalPages ? "disabled" : ""}>
         <i data-lucide="chevron-right"></i>
       </button>
     </div>
   `;
+  catalogPaginationBlocks.forEach((block) => {
+    block.hidden = false;
+    block.innerHTML = html;
+  });
   renderIcons();
 }
 
@@ -465,8 +478,10 @@ function clearCatalog(metaText = "Выберите фирму или введи�
   allVisibleParts = [];
   catalogGrid.innerHTML = "";
   catalogGrid.hidden = true;
-  catalogPagination.hidden = true;
-  catalogPagination.innerHTML = "";
+  catalogPaginationBlocks.forEach((block) => {
+    block.hidden = true;
+    block.innerHTML = "";
+  });
   emptyState.hidden = true;
   resultMeta.textContent = metaText;
   paginationState = {
@@ -484,7 +499,9 @@ function clearCatalog(metaText = "Выберите фирму или введи�
 function setLoading(message) {
   brandPage.hidden = false;
   resultMeta.textContent = message;
-  catalogPagination.hidden = true;
+  catalogPaginationBlocks.forEach((block) => {
+    block.hidden = true;
+  });
   emptyState.hidden = true;
 }
 
@@ -827,14 +844,16 @@ catalogGrid.addEventListener("click", (event) => {
   }
 });
 
-catalogPagination.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-page]");
+catalogPaginationBlocks.forEach((block) => {
+  block.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-page]");
 
-  if (!button || button.disabled) {
-    return;
-  }
+    if (!button || button.disabled) {
+      return;
+    }
 
-  goToCatalogPage(Number(button.dataset.page));
+    goToCatalogPage(Number(button.dataset.page));
+  });
 });
 
 closeDetailButton.addEventListener("click", closeDetail);
