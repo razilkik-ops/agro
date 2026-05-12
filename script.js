@@ -149,8 +149,6 @@ const emptyState = document.querySelector("#emptyState");
 const resultMeta = document.querySelector("#resultMeta");
 const heroSearchForm = document.querySelector("#heroSearchForm");
 const searchInput = document.querySelector("#searchInput");
-const brandSearchForm = document.querySelector("#brandSearchForm");
-const brandSearchInput = document.querySelector("#brandSearchInput");
 const detailSection = document.querySelector("#detail");
 const closeDetailButton = document.querySelector("#closeDetail");
 const orderForm = document.querySelector("#orderForm");
@@ -166,7 +164,6 @@ let searchIndex = null;
 let searchShardByPrefix = new Map();
 let searchShardCache = new Map();
 let toastTimer = null;
-let searchTimer = null;
 let paginationState = {
   mode: "none",
   brandSlug: "",
@@ -330,7 +327,6 @@ function showHomePage() {
   homePage.hidden = false;
   brandPage.hidden = true;
   searchInput.value = "";
-  brandSearchInput.value = "";
   activeBrandSlug = "";
   closeDetail();
   renderBrandList(catalogIndex?.brands || []);
@@ -351,8 +347,13 @@ function showBrandPage(brandSlug = "") {
   }
   brandPageLogo.alt = logo ? getBrandName(brandSlug) : "";
 
-  window.scrollTo({ top: 0, behavior: "smooth" });
   renderIcons();
+}
+
+function scrollToCatalogResults() {
+  requestAnimationFrame(() => {
+    resultMeta.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function clampPage(page, totalPages) {
@@ -648,6 +649,7 @@ async function searchParts(query) {
       query,
       currentPage: 1,
     });
+    scrollToCatalogResults();
     return;
   } catch {
     // Static files remain the fallback for GitHub Pages and plain file hosting.
@@ -677,18 +679,19 @@ async function searchParts(query) {
       query,
       currentPage: 1,
     });
+    scrollToCatalogResults();
   } catch {
     renderCatalog(localResults, `По запросу «${query.trim()}» найдено`, {
       mode: "search",
       query,
       currentPage: 1,
     });
+    scrollToCatalogResults();
   }
 }
 
 async function showBrandProducts(brandSlug, page = 1) {
   showBrandPage(brandSlug);
-  brandSearchInput.value = "";
   renderBrandList(catalogIndex?.brands || []);
   setLoading("Загружаем детали фирмы...");
 
@@ -715,6 +718,7 @@ async function showBrandProducts(brandSlug, page = 1) {
       totalCount: isApiPage ? Number(data.metadata?.count || products.length) : products.length,
       pageItemsAlreadySliced: isApiPage,
     });
+    scrollToCatalogResults();
   } catch {
     const fallback = demoParts.filter((part) => part.brandSlug === brandSlug);
     renderCatalog(fallback, "Демо-детали фирмы", {
@@ -722,6 +726,7 @@ async function showBrandProducts(brandSlug, page = 1) {
       brandSlug,
       currentPage: 1,
     });
+    scrollToCatalogResults();
   }
 }
 
@@ -798,25 +803,13 @@ async function goToCatalogPage(page) {
     totalPages: paginationState.totalPages,
     totalCount: paginationState.totalCount,
   });
+  scrollToCatalogResults();
 }
 
 heroSearchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   activeBrandSlug = "";
-  brandSearchInput.value = searchInput.value;
   searchParts(searchInput.value);
-});
-
-brandSearchForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  searchParts(brandSearchInput.value);
-});
-
-brandSearchInput.addEventListener("input", () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    searchParts(brandSearchInput.value);
-  }, 220);
 });
 
 brandList.addEventListener("click", (event) => {
