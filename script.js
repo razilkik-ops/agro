@@ -748,17 +748,22 @@ function openDetail(partId, shouldFocusForm = false) {
 
   fillDetail(part);
   detailSection.hidden = false;
-  detailSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.body.classList.add("modal-open");
 
   if (shouldFocusForm) {
     setTimeout(() => {
       orderForm.querySelector("input[name='name']")?.focus();
-    }, 420);
+    }, 80);
+  } else {
+    setTimeout(() => {
+      closeDetailButton.focus();
+    }, 80);
   }
 }
 
 function closeDetail() {
   detailSection.hidden = true;
+  document.body.classList.remove("modal-open");
   selectedPart = null;
 }
 
@@ -857,6 +862,12 @@ catalogPaginationBlocks.forEach((block) => {
 });
 
 closeDetailButton.addEventListener("click", closeDetail);
+
+detailSection.addEventListener("click", (event) => {
+  if (event.target === detailSection) {
+    closeDetail();
+  }
+});
 
 orderForm.addEventListener("submit", (event) => {
   event.preventDefault();
