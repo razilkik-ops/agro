@@ -11,7 +11,7 @@
   --steel: #496b78;
   --danger: #a84f3e;
   --shadow: 0 22px 70px rgba(23, 32, 26, 0.12);
-  --hero-image: url("https://images.unsplash.com/photo-1570410147780-c3c9789ed623?auto=format&fit=crop&w=1800&q=82");
+  --hero-image: url("assets/hero-john-deere-field.png");
 }
 
 * {
@@ -156,7 +156,7 @@ button {
 
 .hero-image {
   background-image: var(--hero-image);
-  background-position: center;
+  background-position: center 56%;
   background-size: cover;
   transform: scale(1.02);
 }
