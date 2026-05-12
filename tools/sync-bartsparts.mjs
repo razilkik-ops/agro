@@ -140,13 +140,72 @@ function slugifySku(value = "") {
 }
 
 function parsePrice(value = "") {
-  const match = cleanText(value).match(/(\d+(?:[.,]\d+)?)/);
+  const match = cleanText(value)
+    .replace(/\u00a0/g, " ")
+    .match(/(\d[\d\s.,]*)/);
 
   if (!match) {
     return 0;
   }
 
-  return Number(match[1].replace(",", "."));
+  let numberText = match[1].replace(/\s+/g, "");
+  const commaIndex = numberText.lastIndexOf(",");
+  const dotIndex = numberText.lastIndexOf(".");
+
+  if (commaIndex !== -1 && dotIndex !== -1) {
+    const decimalSeparator = commaIndex > dotIndex ? "," : ".";
+    const thousandsSeparator = decimalSeparator === "," ? "." : ",";
+    numberText = numberText.replaceAll(thousandsSeparator, "");
+    numberText = decimalSeparator === "," ? numberText.replace(",", ".") : numberText;
+  } else if (commaIndex !== -1) {
+    numberText = /\d+,\d{1,2}$/.test(numberText) ? numberText.replace(",", ".") : numberText.replaceAll(",", "");
+  } else if (dotIndex !== -1 && !/\d+\.\d{1,2}$/.test(numberText)) {
+    numberText = numberText.replaceAll(".", "");
+  }
+
+  const parsed = Number(numberText);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function stripTags(value = "") {
+  return cleanText(String(value).replace(/<[^>]*>/g, " "));
+}
+
+function extractVisibleProductPrice(html) {
+  const patterns = [
+    /<div[^>]*class="[^"]*productView-price[^"]*"[^>]*>[\s\S]*?<span[^>]*(?:data-product-price-without-tax|class="[^"]*price[^"]*price--withoutTax)[^>]*>([\s\S]*?)<\/span>/i,
+    /<span[^>]*data-product-price-without-tax[^>]*class="[^"]*price[^"]*"[^>]*>([\s\S]*?)<\/span>/i,
+    /<meta[^>]*itemprop="price"[^>]*content="([^"]+)"[^>]*>/i,
+    /<meta[^>]*content="([^"]+)"[^>]*itemprop="price"[^>]*>/i
+  ];
+
+  for (const pattern of patterns) {
+    const value = html.match(pattern)?.[1] || "";
+    const price = parsePrice(stripTags(value));
+
+    if (price > 0) {
+      return price;
+    }
+  }
+
+  return 0;
+}
+
+function collectJsonLdNodes(value, nodes = []) {
+  if (!value || typeof value !== "object") {
+    return nodes;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectJsonLdNodes(item, nodes);
+    }
+    return nodes;
+  }
+
+  nodes.push(value);
+  collectJsonLdNodes(value["@graph"], nodes);
+  return nodes;
 }
 
 function normalizeUrl(path) {
@@ -448,11 +507,15 @@ function shouldFetchCache(cacheItem) {
     return true;
   }
 
+  if (cacheItem.status === "error" && cacheItem.nextRetryAt && Date.now() < Date.parse(cacheItem.nextRetryAt)) {
+    return false;
+  }
+
   if (!cacheItem.nameOriginal) {
     return true;
   }
 
-  if (cacheItem.status === "error" && cacheItem.nextRetryAt && Date.now() >= Date.parse(cacheItem.nextRetryAt)) {
+  if (Number(cacheItem.sourcePrice) <= 0) {
     return true;
   }
 
@@ -521,7 +584,7 @@ function parseProductDetails(html, entry) {
 
     try {
       const parsed = JSON.parse(raw);
-      const values = Array.isArray(parsed) ? parsed : [parsed];
+      const values = collectJsonLdNodes(parsed);
       const product = values.find(
         (item) => item && typeof item === "object" && String(item["@type"] || "").toLowerCase() === "product"
       );
@@ -546,19 +609,23 @@ function parseProductDetails(html, entry) {
     const titleName = cleanText(productData.name || "");
 
     nameOriginal =
-      description ||
+      extractNameFromCompositeTitle(description, brandLabel, entry.sku) ||
       extractNameFromCompositeTitle(titleName, brandLabel, entry.sku) ||
       fallbackName;
 
     const offers = productData.offers;
     const offer = Array.isArray(offers) ? offers[0] : offers;
-    const offerPrice = Number(offer?.price);
+    const offerPrice = parsePrice(offer?.price);
 
     if (Number.isFinite(offerPrice) && offerPrice > 0) {
       sourcePrice = offerPrice;
     }
 
     currency = cleanText(offer?.priceCurrency || productData.priceCurrency || "EUR") || "EUR";
+  }
+
+  if (!sourcePrice) {
+    sourcePrice = extractVisibleProductPrice(html);
   }
 
   if (!sourcePrice) {

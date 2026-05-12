@@ -46,6 +46,10 @@ function cleanText(value = "") {
     .trim();
 }
 
+function stripTags(value = "") {
+  return cleanText(String(value).replace(/<[^>]*>/g, " "));
+}
+
 function normalizeSearchValue(value = "") {
   return String(value)
     .normalize("NFKD")
@@ -145,13 +149,85 @@ function scoreSearchProduct(product, normalizedQuery, tokens) {
 }
 
 function parseSourcePrice(value = "") {
-  const match = cleanText(value).match(/(\d+(?:[.,]\d+)?)/);
+  const match = cleanText(value)
+    .replace(/\u00a0/g, " ")
+    .match(/(\d[\d\s.,]*)/);
 
   if (!match) {
     return 0;
   }
 
-  return Number(match[1].replace(",", "."));
+  let numberText = match[1].replace(/\s+/g, "");
+  const commaIndex = numberText.lastIndexOf(",");
+  const dotIndex = numberText.lastIndexOf(".");
+
+  if (commaIndex !== -1 && dotIndex !== -1) {
+    const decimalSeparator = commaIndex > dotIndex ? "," : ".";
+    const thousandsSeparator = decimalSeparator === "," ? "." : ",";
+    numberText = numberText.replaceAll(thousandsSeparator, "");
+    numberText = decimalSeparator === "," ? numberText.replace(",", ".") : numberText;
+  } else if (commaIndex !== -1) {
+    numberText = /\d+,\d{1,2}$/.test(numberText) ? numberText.replace(",", ".") : numberText.replaceAll(",", "");
+  } else if (dotIndex !== -1 && !/\d+\.\d{1,2}$/.test(numberText)) {
+    numberText = numberText.replaceAll(".", "");
+  }
+
+  const parsed = Number(numberText);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractVisibleProductPrice(html) {
+  const patterns = [
+    /<div[^>]*class="[^"]*productView-price[^"]*"[^>]*>[\s\S]*?<span[^>]*(?:data-product-price-without-tax|class="[^"]*price[^"]*price--withoutTax)[^>]*>([\s\S]*?)<\/span>/i,
+    /<span[^>]*data-product-price-without-tax[^>]*class="[^"]*price[^"]*"[^>]*>([\s\S]*?)<\/span>/i,
+    /<meta[^>]*itemprop="price"[^>]*content="([^"]+)"[^>]*>/i,
+    /<meta[^>]*content="([^"]+)"[^>]*itemprop="price"[^>]*>/i
+  ];
+
+  for (const pattern of patterns) {
+    const value = html.match(pattern)?.[1] || "";
+    const price = parseSourcePrice(stripTags(value));
+
+    if (price > 0) {
+      return price;
+    }
+  }
+
+  return 0;
+}
+
+function collectJsonLdNodes(value, nodes = []) {
+  if (!value || typeof value !== "object") {
+    return nodes;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectJsonLdNodes(item, nodes);
+    }
+    return nodes;
+  }
+
+  nodes.push(value);
+  collectJsonLdNodes(value["@graph"], nodes);
+  return nodes;
+}
+
+function extractNameFromCompositeTitle(title, brandLabel, sku) {
+  const cleanTitle = cleanText(title);
+  const marker = `${brandLabel} - ${sku} - `;
+
+  if (cleanTitle.startsWith(marker)) {
+    return cleanTitle.slice(marker.length).trim();
+  }
+
+  const parts = cleanTitle.split(" - ").map((item) => item.trim()).filter(Boolean);
+
+  if (parts.length >= 3) {
+    return parts.slice(2).join(" - ");
+  }
+
+  return cleanTitle;
 }
 
 function jsonReply(res, statusCode, payload) {
@@ -239,7 +315,7 @@ function parseBartsPartsHtml(html, product) {
   for (const script of scripts) {
     try {
       const parsed = JSON.parse(script[1]);
-      const values = Array.isArray(parsed) ? parsed : [parsed];
+      const values = collectJsonLdNodes(parsed);
       const item = values.find(
         (entry) => entry && typeof entry === "object" && String(entry["@type"] || "").toLowerCase() === "product"
       );
@@ -248,9 +324,11 @@ function parseBartsPartsHtml(html, product) {
         continue;
       }
 
-      nameOriginal = cleanText(item.description || item.name || "");
+      nameOriginal =
+        extractNameFromCompositeTitle(item.description, product.brand, product.sku) ||
+        extractNameFromCompositeTitle(item.name, product.brand, product.sku);
       const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
-      const parsedPrice = Number(offers?.price);
+      const parsedPrice = parseSourcePrice(offers?.price);
 
       if (Number.isFinite(parsedPrice) && parsedPrice > 0) {
         sourcePrice = parsedPrice;
@@ -261,6 +339,10 @@ function parseBartsPartsHtml(html, product) {
     } catch {
       continue;
     }
+  }
+
+  if (!sourcePrice) {
+    sourcePrice = extractVisibleProductPrice(html);
   }
 
   if (!sourcePrice) {
@@ -332,8 +414,9 @@ async function ensureProductPrice(product, markupRate) {
 
   const cache = await loadBrandCache(brandSlug);
   const cached = cache?.[sku];
+  const cachedSourcePrice = Number(cached?.sourcePrice) || 0;
 
-  if (cached && getCacheEntryFresh(cached) && (cached.nameOriginal || Number(cached.sourcePrice) > 0)) {
+  if (cached && getCacheEntryFresh(cached) && (cached.nameOriginal || cachedSourcePrice > 0) && cachedSourcePrice > 0) {
     return patchProductFromCache(product, cached, markupRate);
   }
 

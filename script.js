@@ -128,6 +128,9 @@ const brandLogos = {
 
 const searchIndexUrl = "data/catalog/search/index.json";
 const catalogIndexUrl = "data/catalog/index.json";
+const apiCatalogIndexUrl = "/api/catalog-index";
+const apiCatalogPageUrl = "/api/catalog-page";
+const apiSearchUrl = "/api/search";
 const resultLimit = 60;
 
 const homePage = document.querySelector("#homePage");
@@ -402,9 +405,23 @@ async function loadJson(url) {
   return response.json();
 }
 
+async function loadFirstJson(urls = []) {
+  let lastError = null;
+
+  for (const url of urls) {
+    try {
+      return await loadJson(url);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Не удалось загрузить данные");
+}
+
 async function loadCatalogIndex() {
   try {
-    catalogIndex = await loadJson(catalogIndexUrl);
+    catalogIndex = await loadFirstJson([apiCatalogIndexUrl, catalogIndexUrl]);
     renderBrandList(catalogIndex.brands || []);
   } catch {
     renderBrandList();
@@ -496,6 +513,29 @@ async function searchParts(query) {
   const localResults = localSearch(query);
 
   try {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(resultLimit),
+    });
+
+    if (activeBrandSlug) {
+      params.set("brand", activeBrandSlug);
+    }
+
+    const data = await loadJson(`${apiSearchUrl}?${params.toString()}`);
+    const apiResults = (data.products || []).map(normalizePart);
+    const merged = [...apiResults, ...localResults].filter(
+      (part, index, list) =>
+        list.findIndex((item) => item.id === part.id) === index,
+    );
+
+    renderCatalog(merged, `По запросу «${query.trim()}» найдено`);
+    return;
+  } catch {
+    // Static files remain the fallback for GitHub Pages and plain file hosting.
+  }
+
+  try {
     await loadSearchIndex();
     const tokens = normalizedQuery.split(" ").filter(Boolean);
     const prefix = getSearchPrefix(tokens[0]);
@@ -527,7 +567,14 @@ async function showBrandProducts(brandSlug) {
   setLoading("Загружаем детали фирмы...");
 
   try {
-    const data = await loadJson(`data/catalog/${brandSlug}/page-1.json`);
+    const params = new URLSearchParams({
+      brand: brandSlug,
+      page: "1",
+    });
+    const data = await loadFirstJson([
+      `${apiCatalogPageUrl}?${params.toString()}`,
+      `data/catalog/${brandSlug}/page-1.json`,
+    ]);
     const brandName = data.metadata?.brand || "Выбранная фирма";
     const products = (data.products || []).map(normalizePart);
     renderCatalog(products, `${brandName}, первая страница каталога`);
