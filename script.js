@@ -132,9 +132,14 @@ const apiCatalogIndexUrl = "/api/catalog-index";
 const apiCatalogPageUrl = "/api/catalog-page";
 const apiSearchUrl = "/api/search";
 const productsPerPage = 20;
-const paginationButtonCount = 10;
-const searchResultLimit = productsPerPage * paginationButtonCount;
+const desktopPaginationButtonCount = 10;
+const mobilePaginationButtonCount = 5;
+const mobilePaginationQuery = window.matchMedia("(max-width: 640px)");
+const searchResultLimit = productsPerPage * desktopPaginationButtonCount;
 
+const siteHeader = document.querySelector(".site-header");
+const menuToggle = document.querySelector("#menuToggle");
+const mainNav = document.querySelector("#mainNav");
 const homePage = document.querySelector("#homePage");
 const brandPage = document.querySelector("#brandPage");
 const brandPageLogoWrap = document.querySelector("#brandPageLogoWrap");
@@ -360,8 +365,14 @@ function clampPage(page, totalPages) {
   return Math.min(Math.max(1, Number(page) || 1), Math.max(1, totalPages));
 }
 
+function getPaginationButtonCount() {
+  return mobilePaginationQuery.matches
+    ? mobilePaginationButtonCount
+    : desktopPaginationButtonCount;
+}
+
 function getPageWindow(currentPage, totalPages) {
-  const visibleCount = Math.min(paginationButtonCount, totalPages);
+  const visibleCount = Math.min(getPaginationButtonCount(), totalPages);
   let start = currentPage - Math.floor(visibleCount / 2);
   start = Math.max(1, Math.min(start, totalPages - visibleCount + 1));
 
@@ -829,6 +840,22 @@ backToHome.addEventListener("click", () => {
   showHomePage();
 });
 
+function setMenuOpen(isOpen) {
+  siteHeader.classList.toggle("nav-open", isOpen);
+  menuToggle.setAttribute("aria-expanded", String(isOpen));
+  menuToggle.setAttribute("aria-label", isOpen ? "Закрыть меню" : "Открыть меню");
+}
+
+menuToggle.addEventListener("click", () => {
+  setMenuOpen(!siteHeader.classList.contains("nav-open"));
+});
+
+mainNav.addEventListener("click", (event) => {
+  if (event.target.closest("a")) {
+    setMenuOpen(false);
+  }
+});
+
 catalogGrid.addEventListener("click", (event) => {
   const detailButton = event.target.closest("[data-detail]");
   const orderButton = event.target.closest("[data-order]");
@@ -856,6 +883,20 @@ catalogPaginationBlocks.forEach((block) => {
 
 closeDetailButton.addEventListener("click", closeDetail);
 
+function handleMobilePaginationChange() {
+  if (!mobilePaginationQuery.matches) {
+    setMenuOpen(false);
+  }
+
+  renderPagination();
+}
+
+if (mobilePaginationQuery.addEventListener) {
+  mobilePaginationQuery.addEventListener("change", handleMobilePaginationChange);
+} else {
+  mobilePaginationQuery.addListener(handleMobilePaginationChange);
+}
+
 detailSection.addEventListener("click", (event) => {
   if (event.target === detailSection) {
     closeDetail();
@@ -876,6 +917,10 @@ orderForm.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && siteHeader.classList.contains("nav-open")) {
+    setMenuOpen(false);
+  }
+
   if (event.key === "Escape" && !detailSection.hidden) {
     closeDetail();
   }
