@@ -25,6 +25,7 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  overflow-x: hidden;
   color: var(--text);
   background: var(--paper);
   font-family:
@@ -1183,13 +1184,16 @@ h3 {
 
   .hero-content {
     --hero-control-gap: 10px;
-    width: 100%;
+    width: min(100%, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
   }
 
   h1 {
-    max-width: 330px;
+    max-width: 100%;
     margin-bottom: 12px;
-    font-size: 32px;
+    font-size: 28px;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
   }
 
   .hero-copy {
@@ -1201,9 +1205,10 @@ h3 {
 
   .hero-search {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 7px;
-    min-height: 54px;
-    padding: 6px;
+    gap: 6px;
+    width: 100%;
+    min-height: 50px;
+    padding: 5px;
   }
 
   .hero-search svg {
@@ -1214,29 +1219,31 @@ h3 {
   }
 
   .hero-search input {
-    min-height: 40px;
+    min-height: 38px;
     padding: 0;
     border: 0;
     border-radius: 0;
-    font-size: 13px;
+    font-size: 12px;
+    text-overflow: ellipsis;
   }
 
   .hero-search .button {
     width: auto;
-    min-height: 42px;
-    padding: 0 14px;
-    font-size: 13px;
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 12px;
   }
 
   .brand-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--hero-control-gap);
-    margin-top: 4px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+    margin-top: 2px;
   }
 
   .brand-row {
-    height: 54px;
-    padding: 10px 14px;
+    height: 42px;
+    padding: 8px 12px;
     box-shadow: 0 10px 26px rgba(8, 18, 12, 0.2);
   }
 
@@ -1246,8 +1253,8 @@ h3 {
   }
 
   .brand-logo-wrap {
-    width: 78%;
-    height: 52%;
+    width: 82%;
+    height: 58%;
   }
 
   .company-note {
