@@ -459,7 +459,6 @@ function renderCatalog(items, metaText = "Популярные позиции", 
             </div>
           </div>
           <div class="part-side">
-            <span class="part-status">${escapeHtml(part.status)}</span>
             <strong>${escapeHtml(formatPrice(part))}</strong>
             <button class="button secondary" type="button" data-detail="${escapeHtml(part.id)}">Подробнее</button>
             <button class="button primary" type="button" data-order="${escapeHtml(part.id)}">Заказать</button>
@@ -738,6 +737,7 @@ function fillDetail(part) {
   document.querySelector("#detailBrand").textContent = part.brand;
   document.querySelector("#detailCompatibility").textContent =
     part.compatibility;
+  document.querySelector("#detailPrice").textContent = formatPrice(part);
   document.querySelector("#detailStatus").textContent = part.status;
   document.querySelector("#detailSpecs").textContent = part.specs;
   orderPart.value = `${part.name} (${part.sku})`;
