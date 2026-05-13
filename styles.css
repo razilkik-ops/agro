@@ -168,6 +168,7 @@ button {
 }
 
 .hero-content {
+  --hero-control-gap: 18px;
   position: relative;
   z-index: 1;
   width: min(920px, 100%);
@@ -338,17 +339,16 @@ h3 {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   width: min(1180px, 100%);
-  gap: 14px;
-  margin: 10px auto 18px;
+  gap: var(--hero-control-gap);
+  margin: 10px auto var(--hero-control-gap);
   padding: 0;
 }
 
 .brand-row {
   position: relative;
   display: block;
-  aspect-ratio: 2.15 / 1;
+  height: 76px;
   min-width: 0;
-  min-height: 86px;
   padding: 16px 22px;
   border: 1px solid #e2e8e1;
   border-radius: 999px;
