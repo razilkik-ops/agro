@@ -500,7 +500,6 @@ function renderCatalog(items, metaText = "Популярные позиции", 
           <div class="part-side">
             ${Number(part.oldPrice) > Number(part.price) ? `<span class="part-old-price">${escapeHtml(formatPrice({ ...part, price: part.oldPrice }))}</span>` : ""}
             <strong>${escapeHtml(formatPrice(part))}</strong>
-            <span class="part-status">${escapeHtml(part.status)}</span>
             <button class="button secondary" type="button" data-detail="${escapeHtml(part.id)}">Подробнее</button>
             <button class="button primary" type="button" data-order="${escapeHtml(part.id)}">Заказать</button>
           </div>
