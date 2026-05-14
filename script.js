@@ -315,7 +315,7 @@ function renderBrandList(brands = []) {
           <span class="brand-logo-wrap ${logo ? "has-logo" : ""}">
             ${
               logo
-                ? `<img src="${escapeHtml(logo)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.removeAttribute('hidden');" /><i data-lucide="tractor" hidden></i>`
+                ? `<img src="${escapeHtml(logo)}" alt="" loading="lazy" onerror="this.closest('.brand-logo-wrap').hidden=true;" />`
                 : `<i data-lucide="tractor"></i>`
             }
           </span>

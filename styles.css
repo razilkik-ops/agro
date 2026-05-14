@@ -343,12 +343,9 @@ h3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   width: min(1180px, 100%);
-  max-height: min(38vh, 360px);
   gap: 10px;
   margin: 10px auto var(--hero-control-gap);
-  padding: 0 4px 0 0;
-  overflow: auto;
-  scrollbar-color: rgba(215, 239, 82, 0.78) rgba(255, 255, 255, 0.22);
+  padding: 0;
 }
 
 .brand-row {
