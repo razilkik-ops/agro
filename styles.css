@@ -341,8 +341,8 @@ h3 {
 
 .brand-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: min(920px, 100%);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: min(1180px, 100%);
   max-height: 268px;
   gap: 10px;
   margin: 10px auto var(--hero-control-gap);
