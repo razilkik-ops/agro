@@ -275,7 +275,14 @@ function normalizePart(product = {}) {
       product.specs ||
       `Категория: ${product.category || "запчасти"}; артикул: ${sku}`,
     price: product.price || 0,
+    oldPrice: product.oldPrice || 0,
+    sourcePrice: product.sourcePrice || 0,
+    oldSourcePrice: product.oldSourcePrice || 0,
     currency: product.currency || "EUR",
+    image: product.image || "",
+    availability: product.availability || "",
+    priceUpdatedAt: product.priceUpdatedAt || "",
+    lastFetchedAt: product.lastFetchedAt || "",
     url: product.url || "",
   };
 }
@@ -462,6 +469,11 @@ function renderCatalog(items, metaText = "Популярные позиции", 
     .map(
       (part) => `
         <article class="part-row">
+          ${
+            part.image
+              ? `<img class="part-image" src="${escapeHtml(part.image)}" alt="" loading="lazy" />`
+              : `<span class="part-image part-image-placeholder"><i data-lucide="package"></i></span>`
+          }
           <div class="part-main">
             <span class="part-brand">${escapeHtml(part.brand)}</span>
             <h3>${escapeHtml(part.name)}</h3>
@@ -473,7 +485,9 @@ function renderCatalog(items, metaText = "Популярные позиции", 
             </div>
           </div>
           <div class="part-side">
+            ${Number(part.oldPrice) > Number(part.price) ? `<span class="part-old-price">${escapeHtml(formatPrice({ ...part, price: part.oldPrice }))}</span>` : ""}
             <strong>${escapeHtml(formatPrice(part))}</strong>
+            <span class="part-status">${escapeHtml(part.status)}</span>
             <button class="button secondary" type="button" data-detail="${escapeHtml(part.id)}">Подробнее</button>
             <button class="button primary" type="button" data-order="${escapeHtml(part.id)}">Заказать</button>
           </div>

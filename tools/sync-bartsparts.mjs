@@ -11,6 +11,7 @@ const stateDir = resolve(process.env.BARTSPARTS_STATE_DIR || "data/bartsparts");
 const indexDir = resolve(stateDir, "index");
 const cacheDir = resolve(stateDir, "cache");
 const statePath = resolve(stateDir, "sync-state.json");
+const importLogsPath = resolve(stateDir, "import-logs.json");
 const indexMetadataPath = resolve(indexDir, "metadata.json");
 const searchIndexPath = resolve(searchDir, "index.json");
 
@@ -60,11 +61,17 @@ const searchRecordFields = [
   "category",
   "price",
   "sourcePrice",
+  "oldPrice",
+  "oldSourcePrice",
   "currency",
   "visual",
   "icon",
   "stock",
-  "url"
+  "url",
+  "image",
+  "availability",
+  "priceUpdatedAt",
+  "lastFetchedAt"
 ];
 
 const sitemapIndexes = [
@@ -180,6 +187,122 @@ function parsePrice(value = "") {
 
 function stripTags(value = "") {
   return cleanText(String(value).replace(/<[^>]*>/g, " "));
+}
+
+function extractAttribute(value = "", name) {
+  const pattern = new RegExp(`\\b${name}=["']([^"']+)["']`, "i");
+  return cleanText(value.match(pattern)?.[1] || "");
+}
+
+function pickImageUrl(value) {
+  if (!value) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return normalizeUrl(value);
+  }
+
+  if (Array.isArray(value)) {
+    return pickImageUrl(value[0]);
+  }
+
+  if (typeof value === "object") {
+    return pickImageUrl(value.url || value.contentUrl || value["@id"]);
+  }
+
+  return "";
+}
+
+function normalizeAvailability(value = "") {
+  const cleaned = cleanText(value).toLowerCase();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  if (cleaned.includes("instock") || cleaned.includes("in stock")) {
+    return "in_stock";
+  }
+
+  if (cleaned.includes("outofstock") || cleaned.includes("out of stock")) {
+    return "out_of_stock";
+  }
+
+  if (cleaned.includes("preorder") || cleaned.includes("pre-order")) {
+    return "preorder";
+  }
+
+  if (cleaned.includes("backorder")) {
+    return "backorder";
+  }
+
+  return cleaned.replace(/^https?:\/\/schema\.org\//, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function formatStock(sourcePrice, availability = "") {
+  if (availability === "out_of_stock") {
+    return "Нет в наличии";
+  }
+
+  if (availability === "preorder" || availability === "backorder") {
+    return "Под заказ";
+  }
+
+  return sourcePrice > 0 ? "Цена обновлена" : "Цена по запросу";
+}
+
+function extractMetaContent(html = "", selectorPattern) {
+  const match = html.match(selectorPattern);
+  return cleanText(match?.[1] || "");
+}
+
+function extractProductImage(html = "", productData = null) {
+  const fallback =
+    extractMetaContent(html, /<meta[^>]*(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+    extractMetaContent(html, /<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']og:image["'][^>]*>/i) ||
+    extractAttribute(html.match(/<img[^>]*class=["'][^"']*productView-image[^"']*["'][^>]*>/i)?.[0] || "", "src") ||
+    extractAttribute(html.match(/<img[^>]*data-main-image[^>]*>/i)?.[0] || "", "src");
+
+  return pickImageUrl(productData?.image) || (fallback ? normalizeUrl(fallback) : "");
+}
+
+function extractVisibleOldProductPrice(html = "") {
+  const patterns = [
+    /<span[^>]*(?:data-product-rrp-without-tax|data-product-non-sale-price-without-tax)[^>]*>([\s\S]*?)<\/span>/i,
+    /<span[^>]*class=["'][^"']*(?:price--rrp|price--non-sale|price--was|was-price|old-price)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+    /<div[^>]*class=["'][^"']*(?:rrp-price|non-sale-price|was-price|old-price)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i
+  ];
+
+  for (const pattern of patterns) {
+    const value = html.match(pattern)?.[1] || "";
+    const price = parsePrice(stripTags(value));
+
+    if (price > 0) {
+      return price;
+    }
+  }
+
+  return 0;
+}
+
+function appendPriceHistory(previous = {}, next = {}) {
+  const currentPrice = Number(next.sourcePrice) || 0;
+  const previousPrice = Number(previous.sourcePrice) || 0;
+
+  if (currentPrice <= 0 || currentPrice === previousPrice) {
+    return Array.isArray(previous.priceHistory) ? previous.priceHistory.slice(-50) : [];
+  }
+
+  return [
+    ...(Array.isArray(previous.priceHistory) ? previous.priceHistory : []),
+    {
+      sourcePrice: currentPrice,
+      oldSourcePrice: previousPrice || Number(next.oldSourcePrice) || 0,
+      currency: next.currency || previous.currency || "EUR",
+      fetchedAt: next.lastFetchedAt
+    }
+  ].slice(-50);
 }
 
 function decodeBrandSlugFromUrl(value = "") {
@@ -737,7 +860,10 @@ function parseProductDetails(html, entry) {
   const fallbackName = `${brandLabel} ${entry.sku}`;
   let nameOriginal = "";
   let sourcePrice = 0;
+  let oldSourcePrice = 0;
   let currency = "EUR";
+  let image = "";
+  let availability = "";
 
   if (productData) {
     const description = cleanText(productData.description || "");
@@ -757,10 +883,17 @@ function parseProductDetails(html, entry) {
     }
 
     currency = cleanText(offer?.priceCurrency || productData.priceCurrency || "EUR") || "EUR";
+    oldSourcePrice = parsePrice(offer?.highPrice || productData.highPrice || "");
+    image = extractProductImage(html, productData);
+    availability = normalizeAvailability(offer?.availability || productData.availability || "");
   }
 
   if (!sourcePrice) {
     sourcePrice = extractVisibleProductPrice(html);
+  }
+
+  if (!oldSourcePrice) {
+    oldSourcePrice = extractVisibleOldProductPrice(html);
   }
 
   if (!sourcePrice) {
@@ -771,6 +904,18 @@ function parseProductDetails(html, entry) {
     sourcePrice = parsePrice(priceMeta);
   }
 
+  if (!image) {
+    image = extractProductImage(html);
+  }
+
+  if (!availability) {
+    const availabilityMeta =
+      html.match(/<link[^>]*itemprop=["']availability["'][^>]*href=["']([^"']+)["'][^>]*>/i)?.[1] ||
+      html.match(/"availability"\s*:\s*"([^"]+)"/i)?.[1] ||
+      "";
+    availability = normalizeAvailability(availabilityMeta);
+  }
+
   if (!nameOriginal) {
     const titleValue = cleanText(html.match(/<title>\s*([^<]+?)\s*\|/i)?.[1] || "");
     nameOriginal = extractNameFromCompositeTitle(titleValue, brandLabel, entry.sku) || fallbackName;
@@ -779,7 +924,10 @@ function parseProductDetails(html, entry) {
   return {
     nameOriginal,
     sourcePrice: Number.isFinite(sourcePrice) ? roundMoney(sourcePrice) : 0,
-    currency: currency || "EUR"
+    oldSourcePrice: oldSourcePrice > sourcePrice ? roundMoney(oldSourcePrice) : 0,
+    currency: currency || "EUR",
+    image,
+    availability
   };
 }
 
@@ -825,19 +973,30 @@ async function enrichTargets(targets, cacheByBrand) {
 
     if (result.ok) {
       const sourceName = cleanText(result.details.nameOriginal);
-
-      brandCache[result.entry.sku] = {
+      const nextCacheItem = {
         ...previous,
         sku: result.entry.sku,
         url: result.entry.url,
         nameOriginal: sourceName,
         name: sourceName,
         sourcePrice: result.details.sourcePrice,
+        oldSourcePrice: result.details.oldSourcePrice || 0,
         currency: result.details.currency || "EUR",
+        image: result.details.image || previous.image || "",
+        availability: result.details.availability || previous.availability || "",
         status: "ok",
         errorCount: 0,
         nextRetryAt: null,
-        lastFetchedAt: nowIso
+        lastFetchedAt: nowIso,
+        priceUpdatedAt:
+          Number(previous.sourcePrice || 0) !== Number(result.details.sourcePrice || 0)
+            ? nowIso
+            : previous.priceUpdatedAt || nowIso
+      };
+
+      brandCache[result.entry.sku] = {
+        ...nextCacheItem,
+        priceHistory: appendPriceHistory(previous, nextCacheItem)
       };
     } else {
       brandCache[result.entry.sku] = {
@@ -871,7 +1030,9 @@ function buildProducts(indexByBrand, cacheByBrand) {
       const cached = cache[entry.sku] || {};
       const nameOriginal = cleanText(cached.nameOriginal || entry.sku);
       const sourcePrice = Number(cached.sourcePrice) || 0;
+      const oldSourcePrice = Number(cached.oldSourcePrice) || 0;
       const price = sourcePrice > 0 ? roundMoney(sourcePrice * (1 + priceMarkup)) : 0;
+      const oldPrice = oldSourcePrice > sourcePrice ? roundMoney(oldSourcePrice * (1 + priceMarkup)) : 0;
       const name = cleanText(cached.nameOriginal || cached.name || `${brandInfo.label} ${entry.sku}`);
       const category = inferCategory(nameOriginal);
 
@@ -896,8 +1057,14 @@ function buildProducts(indexByBrand, cacheByBrand) {
         icon: brandInfo.icon,
         price,
         sourcePrice,
+        oldPrice,
+        oldSourcePrice,
         currency: cached.currency || "EUR",
-        stock: sourcePrice > 0 ? "Цена обновлена" : "Цена по запросу",
+        stock: formatStock(sourcePrice, cached.availability || ""),
+        image: cached.image || "",
+        availability: cached.availability || "",
+        priceUpdatedAt: cached.priceUpdatedAt || cached.lastFetchedAt || "",
+        lastFetchedAt: cached.lastFetchedAt || "",
         url: entry.url
       };
     });
@@ -989,11 +1156,17 @@ function createSearchRecord(product, brandSlug) {
     product.category,
     product.price,
     product.sourcePrice,
+    product.oldPrice,
+    product.oldSourcePrice,
     product.currency,
     product.visual,
     product.icon,
     product.stock,
-    product.url
+    product.url,
+    product.image,
+    product.availability,
+    product.priceUpdatedAt,
+    product.lastFetchedAt
   ];
 }
 
@@ -1082,7 +1255,23 @@ async function writeSearchIndex(groupedProducts) {
   };
 }
 
+async function appendImportLog(entry) {
+  const previous = await readJson(importLogsPath, { runs: [] });
+  const runs = Array.isArray(previous?.runs) ? previous.runs : [];
+
+  await writeJson(
+    importLogsPath,
+    {
+      runs: [...runs, entry].slice(-100)
+    },
+    true
+  );
+}
+
 async function main() {
+  const runStartedAt = toIsoDate();
+  const runId = `bartsparts-${runStartedAt.replace(/[:.]/g, "-")}`;
+
   await setupBrandConfig();
 
   const syncState = await readJson(statePath, {
@@ -1186,6 +1375,24 @@ async function main() {
     },
     true
   );
+
+  await appendImportLog({
+    runId,
+    sourceName: "BartsParts sitemap + product pages",
+    sourceUrl: baseUrl,
+    startedAt: runStartedAt,
+    finishedAt: toIsoDate(),
+    brandCount: brandSlugs.length,
+    totalCount,
+    enrichedTargets: targets.length,
+    catalogCount: limitedCount,
+    enrichedCount: built.enrichedProducts,
+    pricedCount: built.pricedProducts,
+    searchShards: searchIndex.totalShards,
+    cursor: nextCursor,
+    mode: requestedBrandSlugs.length > 0 ? "brand-filter" : "all-brands",
+    requestedBrands: requestedBrandSlugs
+  });
 
   console.log(`Catalog built: ${limitedCount} products`);
   console.log(`Search shards built: ${searchIndex.totalShards}`);

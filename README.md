@@ -34,15 +34,39 @@ node server.mjs
 
 ## Синхронизация каталога BartsParts
 
-Скрипт `tools/sync-bartsparts.mjs` работает в 3 этапа:
+Скрипт `tools/sync-bartsparts.mjs` работает в 4 этапа:
 
-1. строит полный индекс SKU по sitemap в `data/bartsparts/index/*`;
-2. фоново обогащает карточки (название + цена) порциями и хранит кэш в `data/bartsparts/cache/*`;
-3. собирает витрину сайта в `data/catalog/*`, `data/catalog.json` и глобальный поисковый индекс в `data/catalog/search/*`.
+1. загружает полный список брендов со страницы `https://bartsparts.com/brands`;
+2. строит полный индекс SKU по sitemap в `data/bartsparts/index/*`;
+3. фоново обогащает карточки (название, цена, старая цена, валюта, изображение, наличие, история цены) порциями и хранит кэш в `data/bartsparts/cache/*`;
+4. собирает витрину сайта в `data/catalog/*`, `data/catalog.json` и глобальный поисковый индекс в `data/catalog/search/*`.
+
+Журнал последних запусков хранится в `data/bartsparts/import-logs.json`, состояние продолжения — в `data/bartsparts/sync-state.json`.
+
+Полный импорт всех брендов:
+
+```bash
+BARTSPARTS_BRANDS=all BARTSPARTS_REFRESH_INDEX=1 node tools/sync-bartsparts.mjs
+```
+
+Импорт одного бренда:
+
+```bash
+BARTSPARTS_BRANDS=john-deere node tools/sync-bartsparts.mjs
+```
+
+Только пересобрать локальные JSON-страницы и поиск без запросов карточек:
+
+```bash
+BARTSPARTS_ENRICH_PER_RUN=0 node tools/sync-bartsparts.mjs
+```
+
+Скрипт не обходит авторизацию, капчи или антибот-защиту. Перед массовым запуском проверяйте правила сайта-донора и снижайте `BARTSPARTS_ENRICH_CONCURRENCY`/увеличивайте `BARTSPARTS_REQUEST_DELAY_MS`, если сайт начинает отвечать ограничениями.
 
 Основные переменные окружения:
 
 - `BARTSPARTS_CHUNK_SIZE` — размер страницы каталога (по умолчанию `1000`).
+- `BARTSPARTS_BRANDS` — `all` или список slug через запятую для импорта отдельных брендов.
 - `BARTSPARTS_ENRICH_PER_RUN` — сколько карточек товаров догружать за один запуск (по умолчанию `2500`).
 - `BARTSPARTS_ENRICH_CONCURRENCY` — параллелизм запросов при обогащении (по умолчанию `4`).
 - `BARTSPARTS_REQUEST_DELAY_MS` — задержка между запросами (по умолчанию `120`).

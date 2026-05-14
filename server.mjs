@@ -50,6 +50,81 @@ function stripTags(value = "") {
   return cleanText(String(value).replace(/<[^>]*>/g, " "));
 }
 
+function extractAttribute(value = "", name) {
+  const pattern = new RegExp(`\\b${name}=["']([^"']+)["']`, "i");
+  return cleanText(value.match(pattern)?.[1] || "");
+}
+
+function normalizeSourceUrl(value = "") {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new URL(cleanText(value), "https://bartsparts.com/").toString();
+  } catch {
+    return "";
+  }
+}
+
+function pickImageUrl(value) {
+  if (!value) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return normalizeSourceUrl(value);
+  }
+
+  if (Array.isArray(value)) {
+    return pickImageUrl(value[0]);
+  }
+
+  if (typeof value === "object") {
+    return pickImageUrl(value.url || value.contentUrl || value["@id"]);
+  }
+
+  return "";
+}
+
+function normalizeAvailability(value = "") {
+  const cleaned = cleanText(value).toLowerCase();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  if (cleaned.includes("instock") || cleaned.includes("in stock")) {
+    return "in_stock";
+  }
+
+  if (cleaned.includes("outofstock") || cleaned.includes("out of stock")) {
+    return "out_of_stock";
+  }
+
+  if (cleaned.includes("preorder") || cleaned.includes("pre-order")) {
+    return "preorder";
+  }
+
+  if (cleaned.includes("backorder")) {
+    return "backorder";
+  }
+
+  return cleaned.replace(/^https?:\/\/schema\.org\//, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function formatStock(sourcePrice, availability = "", fallback = "Цена уточняется") {
+  if (availability === "out_of_stock") {
+    return "Нет в наличии";
+  }
+
+  if (availability === "preorder" || availability === "backorder") {
+    return "Под заказ";
+  }
+
+  return sourcePrice > 0 ? "Цена обновлена" : fallback;
+}
+
 function normalizeSearchValue(value = "") {
   return String(value)
     .normalize("NFKD")
@@ -196,6 +271,25 @@ function extractVisibleProductPrice(html) {
   return 0;
 }
 
+function extractVisibleOldProductPrice(html = "") {
+  const patterns = [
+    /<span[^>]*(?:data-product-rrp-without-tax|data-product-non-sale-price-without-tax)[^>]*>([\s\S]*?)<\/span>/i,
+    /<span[^>]*class=["'][^"']*(?:price--rrp|price--non-sale|price--was|was-price|old-price)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+    /<div[^>]*class=["'][^"']*(?:rrp-price|non-sale-price|was-price|old-price)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i
+  ];
+
+  for (const pattern of patterns) {
+    const value = html.match(pattern)?.[1] || "";
+    const price = parseSourcePrice(stripTags(value));
+
+    if (price > 0) {
+      return price;
+    }
+  }
+
+  return 0;
+}
+
 function collectJsonLdNodes(value, nodes = []) {
   if (!value || typeof value !== "object") {
     return nodes;
@@ -211,6 +305,35 @@ function collectJsonLdNodes(value, nodes = []) {
   nodes.push(value);
   collectJsonLdNodes(value["@graph"], nodes);
   return nodes;
+}
+
+function extractProductImage(html = "", productData = null) {
+  const fallback =
+    cleanText(html.match(/<meta[^>]*(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i)?.[1] || "") ||
+    cleanText(html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']og:image["'][^>]*>/i)?.[1] || "") ||
+    extractAttribute(html.match(/<img[^>]*class=["'][^"']*productView-image[^"']*["'][^>]*>/i)?.[0] || "", "src") ||
+    extractAttribute(html.match(/<img[^>]*data-main-image[^>]*>/i)?.[0] || "", "src");
+
+  return pickImageUrl(productData?.image) || (fallback ? normalizeSourceUrl(fallback) : "");
+}
+
+function appendPriceHistory(previous = {}, next = {}) {
+  const currentPrice = Number(next.sourcePrice) || 0;
+  const previousPrice = Number(previous.sourcePrice) || 0;
+
+  if (currentPrice <= 0 || currentPrice === previousPrice) {
+    return Array.isArray(previous.priceHistory) ? previous.priceHistory.slice(-50) : [];
+  }
+
+  return [
+    ...(Array.isArray(previous.priceHistory) ? previous.priceHistory : []),
+    {
+      sourcePrice: currentPrice,
+      oldSourcePrice: previousPrice || Number(next.oldSourcePrice) || 0,
+      currency: next.currency || previous.currency || "EUR",
+      fetchedAt: next.lastFetchedAt
+    }
+  ].slice(-50);
 }
 
 function extractNameFromCompositeTitle(title, brandLabel, sku) {
@@ -310,7 +433,10 @@ function parseBartsPartsHtml(html, product) {
   const scripts = [...html.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)];
   let nameOriginal = "";
   let sourcePrice = 0;
+  let oldSourcePrice = 0;
   let currency = product.currency || "EUR";
+  let image = "";
+  let availability = "";
 
   for (const script of scripts) {
     try {
@@ -335,6 +461,9 @@ function parseBartsPartsHtml(html, product) {
       }
 
       currency = cleanText(offers?.priceCurrency || item.priceCurrency || currency) || currency;
+      oldSourcePrice = parseSourcePrice(offers?.highPrice || item.highPrice || "");
+      image = extractProductImage(html, item);
+      availability = normalizeAvailability(offers?.availability || item.availability || "");
       break;
     } catch {
       continue;
@@ -345,12 +474,28 @@ function parseBartsPartsHtml(html, product) {
     sourcePrice = extractVisibleProductPrice(html);
   }
 
+  if (!oldSourcePrice) {
+    oldSourcePrice = extractVisibleOldProductPrice(html);
+  }
+
   if (!sourcePrice) {
     const metaPrice =
       html.match(/<meta property="product:price:amount" content="([^"]+)"/i)?.[1] ||
       html.match(/"price"\s*:\s*([0-9]+(?:\.[0-9]+)?)/)?.[1] ||
       "";
     sourcePrice = parseSourcePrice(metaPrice);
+  }
+
+  if (!image) {
+    image = extractProductImage(html);
+  }
+
+  if (!availability) {
+    const availabilityMeta =
+      html.match(/<link[^>]*itemprop=["']availability["'][^>]*href=["']([^"']+)["'][^>]*>/i)?.[1] ||
+      html.match(/"availability"\s*:\s*"([^"]+)"/i)?.[1] ||
+      "";
+    availability = normalizeAvailability(availabilityMeta);
   }
 
   if (!nameOriginal) {
@@ -364,7 +509,10 @@ function parseBartsPartsHtml(html, product) {
   return {
     nameOriginal,
     sourcePrice: roundMoney(sourcePrice),
-    currency: currency || "EUR"
+    oldSourcePrice: oldSourcePrice > sourcePrice ? roundMoney(oldSourcePrice) : 0,
+    currency: currency || "EUR",
+    image,
+    availability
   };
 }
 
@@ -390,8 +538,11 @@ async function fetchProductHtml(url) {
 
 function patchProductFromCache(product, cacheItem, markupRate) {
   const sourcePrice = Number(cacheItem?.sourcePrice) || 0;
+  const oldSourcePrice = Number(cacheItem?.oldSourcePrice) || 0;
   const price = sourcePrice > 0 ? roundMoney(sourcePrice * (1 + markupRate)) : 0;
+  const oldPrice = oldSourcePrice > sourcePrice ? roundMoney(oldSourcePrice * (1 + markupRate)) : 0;
   const nameOriginal = cleanText(cacheItem?.nameOriginal || product.nameOriginal || product.name);
+  const availability = cacheItem?.availability || product.availability || "";
 
   return {
     ...product,
@@ -399,8 +550,14 @@ function patchProductFromCache(product, cacheItem, markupRate) {
     name: cleanText(nameOriginal || product.name),
     sourcePrice,
     price,
+    oldSourcePrice,
+    oldPrice,
     currency: cacheItem?.currency || product.currency || "EUR",
-    stock: sourcePrice > 0 ? "Цена обновлена" : product.stock || "Цена уточняется"
+    image: cacheItem?.image || product.image || "",
+    availability,
+    priceUpdatedAt: cacheItem?.priceUpdatedAt || cacheItem?.lastFetchedAt || product.priceUpdatedAt || "",
+    lastFetchedAt: cacheItem?.lastFetchedAt || product.lastFetchedAt || "",
+    stock: formatStock(sourcePrice, availability, product.stock || "Цена уточняется")
   };
 }
 
@@ -432,12 +589,21 @@ async function ensureProductPrice(product, markupRate) {
       nameOriginal: details.nameOriginal,
       name: details.nameOriginal,
       sourcePrice: details.sourcePrice,
+      oldSourcePrice: details.oldSourcePrice || 0,
       currency: details.currency || "EUR",
+      image: details.image || cached?.image || "",
+      availability: details.availability || cached?.availability || "",
       status: "ok",
       errorCount: 0,
       nextRetryAt: null,
-      lastFetchedAt: nowIso
+      lastFetchedAt: nowIso,
+      priceUpdatedAt:
+        Number(cached?.sourcePrice || 0) !== Number(details.sourcePrice || 0)
+          ? nowIso
+          : cached?.priceUpdatedAt || nowIso
     };
+
+    cache[sku].priceHistory = appendPriceHistory(cached || {}, cache[sku]);
 
     await persistBrandCache(brandSlug);
     return patchProductFromCache(product, cache[sku], markupRate);

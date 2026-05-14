@@ -2,7 +2,7 @@
   "metadata": {
     "sourceName": "BartsParts sitemap + product pages",
     "sourceUrl": "https://bartsparts.com",
-    "updatedAt": "2026-05-14T13:27:58.468Z",
+    "updatedAt": "2026-05-14T13:48:52.695Z",
     "totalProducts": 1987290,
     "totalShards": 19663,
     "prefixLength": 3,
@@ -17,11 +17,17 @@
       "category",
       "price",
       "sourcePrice",
+      "oldPrice",
+      "oldSourcePrice",
       "currency",
       "visual",
       "icon",
       "stock",
-      "url"
+      "url",
+      "image",
+      "availability",
+      "priceUpdatedAt",
+      "lastFetchedAt"
     ]
   },
   "shards": [
@@ -34338,7 +34344,7 @@
     {
       "prefix": "dee",
       "shardId": "64-65-65",
-      "count": 132388
+      "count": 132389
     },
     {
       "prefix": "def",
@@ -41688,7 +41694,7 @@
     {
       "prefix": "fil",
       "shardId": "66-69-6c",
-      "count": 6397
+      "count": 6400
     },
     {
       "prefix": "fin",
@@ -53598,7 +53604,7 @@
     {
       "prefix": "joh",
       "shardId": "6a-6f-68",
-      "count": 132388
+      "count": 132389
     },
     {
       "prefix": "joi",
@@ -63848,7 +63854,7 @@
     {
       "prefix": "mot",
       "shardId": "6d-6f-74",
-      "count": 1431
+      "count": 1432
     },
     {
       "prefix": "mou",
@@ -68373,7 +68379,7 @@
     {
       "prefix": "oil",
       "shardId": "6f-69-6c",
-      "count": 2
+      "count": 4
     },
     {
       "prefix": "oj4",
@@ -68458,7 +68464,7 @@
     {
       "prefix": "ole",
       "shardId": "6f-6c-65",
-      "count": 3
+      "count": 4
     },
     {
       "prefix": "oli",
@@ -79698,7 +79704,7 @@
     {
       "prefix": "sil",
       "shardId": "73-69-6c",
-      "count": 1108
+      "count": 1109
     },
     {
       "prefix": "sił",
