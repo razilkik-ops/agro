@@ -307,7 +307,10 @@ function renderBrandList(brands = []) {
                 : `<i data-lucide="tractor"></i>`
             }
           </span>
-          <strong class="sr-only">${escapeHtml(brand.brand)}</strong>
+          <span class="brand-text">
+            <strong>${escapeHtml(brand.brand)}</strong>
+            <small>${Number(brand.count || 0).toLocaleString("ru-RU")}</small>
+          </span>
         </button>
       `,
     )

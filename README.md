@@ -66,7 +66,7 @@ node server.mjs
 
 Для обычного workflow `.github/workflows/sync-catalog.yml`:
 
-- `BARTSPARTS_BRANDS=john-deere,fendt,case-ih,new-holland,claas,krone`
+- `BARTSPARTS_BRANDS=all` — брать все бренды со страницы `https://bartsparts.com/brands`; можно указать список slug через запятую для частичной синхронизации.
 - `BARTSPARTS_CHUNK_SIZE=1000`
 - `BARTSPARTS_FEATURED_PER_BRAND=12`
 - `BARTSPARTS_PRICE_MARKUP=20`
@@ -90,6 +90,6 @@ node server.mjs
 
 ## Workflow
 
-- `.github/workflows/sync-catalog.yml` запускается каждые 6 часов по cron `18 */6 * * *` и делает безопасное инкрементальное добирание.
+- `.github/workflows/sync-catalog.yml` запускается каждый час по cron `18 * * * *` и делает безопасное инкрементальное добирание.
 - `.github/workflows/sync-catalog-nightly.yml` запускается каждый день по cron `42 1 * * *` (01:42 UTC) и использует более агрессивные настройки обогащения.
 - Для защиты от гонок оба workflow объединены в один `concurrency`-group `bartsparts-sync`, поэтому параллельно они не стартуют.

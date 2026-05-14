@@ -2,7 +2,7 @@ name: Sync BartsParts catalog
 
 on:
   schedule:
-    - cron: "18 */6 * * *"
+    - cron: "18 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -28,7 +28,7 @@ jobs:
 
       - name: Sync catalog
         env:
-          BARTSPARTS_BRANDS: ${{ vars.BARTSPARTS_BRANDS || 'john-deere,fendt,case-ih,new-holland,claas,krone' }}
+          BARTSPARTS_BRANDS: ${{ vars.BARTSPARTS_BRANDS || 'all' }}
           BARTSPARTS_LIMIT: ${{ vars.BARTSPARTS_LIMIT }}
           BARTSPARTS_CHUNK_SIZE: ${{ vars.BARTSPARTS_CHUNK_SIZE || '1000' }}
           BARTSPARTS_FEATURED_PER_BRAND: ${{ vars.BARTSPARTS_FEATURED_PER_BRAND || '12' }}

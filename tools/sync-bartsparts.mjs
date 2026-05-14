@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 const baseUrl = (process.env.BARTSPARTS_BASE_URL || "https://bartsparts.com").replace(/\/$/, "");
+const brandsPageUrl = `${baseUrl}/brands`;
 const previewPath = resolve(process.env.CATALOG_OUTPUT || "data/catalog.json");
 const catalogDir = resolve(process.env.CATALOG_DIR || "data/catalog");
 const searchDir = resolve(catalogDir, "search");
@@ -24,7 +25,7 @@ const refreshIndex = process.env.BARTSPARTS_REFRESH_INDEX === "1";
 const retryErrorHours = getNumberEnv("BARTSPARTS_ERROR_RETRY_HOURS", 12);
 const searchPrefixLength = getNumberEnv("BARTSPARTS_SEARCH_PREFIX_LENGTH", 3);
 
-const brandMap = {
+const preferredBrandDetails = {
   "john-deere": { label: "John Deere", visual: "green", icon: "package" },
   fendt: { label: "Fendt", visual: "amber", icon: "package" },
   "case-ih": { label: "Case IH", visual: "red", icon: "package" },
@@ -32,12 +33,22 @@ const brandMap = {
   claas: { label: "Claas", visual: "green", icon: "package" },
   krone: { label: "Krone", visual: "amber", icon: "package" }
 };
+const brandVisuals = ["green", "amber", "red", "blue", "steel", "danger"];
+const fallbackBrands = Object.entries(preferredBrandDetails).map(([brandSlug, details]) => ({
+  brandSlug,
+  brand: details.label,
+  sourceUrl: `${baseUrl}/${brandSlug}/`
+}));
 
-const allowedBrandSlugs = Object.keys(brandMap);
-const brandSlugs = (process.env.BARTSPARTS_BRANDS || allowedBrandSlugs.join(","))
+let brandMap = {};
+let brandSlugs = [];
+let brandSlugsByLength = [];
+
+const requestedBrandSlugs = (process.env.BARTSPARTS_BRANDS || "")
   .split(",")
   .map((item) => item.trim())
-  .filter((item) => allowedBrandSlugs.includes(item));
+  .filter(Boolean)
+  .filter((item) => !["*", "all"].includes(item.toLowerCase()));
 
 const searchRecordFields = [
   "id",
@@ -169,6 +180,129 @@ function parsePrice(value = "") {
 
 function stripTags(value = "") {
   return cleanText(String(value).replace(/<[^>]*>/g, " "));
+}
+
+function decodeBrandSlugFromUrl(value = "") {
+  try {
+    const parsed = new URL(cleanText(value), `${baseUrl}/`);
+    const parts = parsed.pathname.split("/").map((item) => item.trim()).filter(Boolean);
+
+    if (parsed.origin !== new URL(baseUrl).origin || parts.length !== 1) {
+      return "";
+    }
+
+    return parts[0].toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function parseBrandLinks(html = "") {
+  const brands = [];
+  const seen = new Set();
+  const anchorPattern = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+
+  for (const match of html.matchAll(anchorPattern)) {
+    const attributes = match[1] || "";
+    const classValue = attributes.match(/\bclass=["']([^"']+)["']/i)?.[1] || "";
+
+    if (!classValue.split(/\s+/).includes("brand-link")) {
+      continue;
+    }
+
+    const href = attributes.match(/\bhref=["']([^"']+)["']/i)?.[1] || "";
+    const brandSlug = decodeBrandSlugFromUrl(href);
+    const brand = stripTags(match[2]);
+
+    if (!brandSlug || !brand || seen.has(brandSlug)) {
+      continue;
+    }
+
+    seen.add(brandSlug);
+    brands.push({
+      brandSlug,
+      brand,
+      sourceUrl: normalizeUrl(`/${brandSlug}/`)
+    });
+  }
+
+  return brands;
+}
+
+function getBrandDetails(brand, index) {
+  const preferred = preferredBrandDetails[brand.brandSlug] || {};
+  return {
+    label: preferred.label || brand.brand,
+    visual: preferred.visual || brandVisuals[index % brandVisuals.length],
+    icon: preferred.icon || "package",
+    sourceUrl: brand.sourceUrl || `${baseUrl}/${brand.brandSlug}/`
+  };
+}
+
+function buildBrandConfig(brands = []) {
+  brandSlugs = [];
+  brandMap = {};
+
+  brands.forEach((brand, index) => {
+    if (!brand?.brandSlug || brandMap[brand.brandSlug]) {
+      return;
+    }
+
+    brandSlugs.push(brand.brandSlug);
+    brandMap[brand.brandSlug] = getBrandDetails(brand, index);
+  });
+
+  brandSlugsByLength = [...brandSlugs].sort((a, b) => b.length - a.length);
+}
+
+function applyRequestedBrandFilter(brands = []) {
+  if (requestedBrandSlugs.length === 0) {
+    return brands;
+  }
+
+  const knownBySlug = new Map(brands.map((brand) => [brand.brandSlug, brand]));
+  return requestedBrandSlugs.map((brandSlug) => {
+    const known = knownBySlug.get(brandSlug);
+
+    if (known) {
+      return known;
+    }
+
+    return {
+      brandSlug,
+      brand: preferredBrandDetails[brandSlug]?.label || brandSlug.replaceAll("-", " "),
+      sourceUrl: `${baseUrl}/${brandSlug}/`
+    };
+  });
+}
+
+async function loadBrandsFromPage() {
+  console.log(`Loading brands page: ${brandsPageUrl}`);
+  const html = await fetchText(brandsPageUrl);
+  const brands = parseBrandLinks(html);
+
+  if (brands.length === 0) {
+    throw new Error(`No brand links found at ${brandsPageUrl}`);
+  }
+
+  return brands;
+}
+
+async function setupBrandConfig() {
+  let brands = [];
+
+  try {
+    brands = await loadBrandsFromPage();
+  } catch (error) {
+    console.warn(`Could not load brands page: ${error.message}`);
+    const savedMetadata = await readJson(indexMetadataPath, null);
+    brands = Array.isArray(savedMetadata?.brands) ? savedMetadata.brands : fallbackBrands;
+  }
+
+  brands = applyRequestedBrandFilter(brands);
+  buildBrandConfig(brands.length ? brands : fallbackBrands);
+
+  console.log(`Brands selected: ${brandSlugs.length}`);
 }
 
 function extractVisibleProductPrice(html) {
@@ -321,11 +455,11 @@ async function loadSitemapUrls() {
       for (const sitemapUrl of sitemapUrls) {
         const gz = await fetchBuffer(sitemapUrl);
         const sitemapXml = gunzipSync(gz).toString("utf8");
-        const locs = parseLocs(sitemapXml, /<loc>(https:\/\/bartsparts\.com\/products\/[^<]+)<\/loc>/g);
+        const locs = parseLocs(sitemapXml, /<loc>(https?:\/\/[^<]+\/products\/[^<]+)<\/loc>/g);
         productUrls.push(...locs);
       }
     } else {
-      const locs = parseLocs(xml, /<loc>(https:\/\/bartsparts\.com\/products\/[^<]+)<\/loc>/g);
+      const locs = parseLocs(xml, /<loc>(https?:\/\/[^<]+\/products\/[^<]+)<\/loc>/g);
       productUrls.push(...locs);
     }
   }
@@ -336,7 +470,8 @@ async function loadSitemapUrls() {
 function parseUrlToIndexEntry(url) {
   const parsed = new URL(url);
   const slug = parsed.pathname.replace(/^\/products\//, "").replace(/\/$/, "");
-  const brandSlug = brandSlugs.find((candidate) => slug.startsWith(`${candidate}-`));
+  const lowerSlug = slug.toLowerCase();
+  const brandSlug = brandSlugsByLength.find((candidate) => lowerSlug.startsWith(`${candidate.toLowerCase()}-`));
 
   if (!brandSlug) {
     return null;
@@ -948,6 +1083,8 @@ async function writeSearchIndex(groupedProducts) {
 }
 
 async function main() {
+  await setupBrandConfig();
+
   const syncState = await readJson(statePath, {
     cursor: 0,
     totalCount: 0,
