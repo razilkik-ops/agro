@@ -16,6 +16,30 @@
       "cursor": 5052,
       "mode": "all-brands",
       "requestedBrands": []
+    },
+    {
+      "runId": "bartsparts-2026-05-14T16-22-28-225Z",
+      "sourceName": "BartsParts sitemap + product pages",
+      "sourceUrl": "https://bartsparts.com",
+      "startedAt": "2026-05-14T16:22:28.225Z",
+      "finishedAt": "2026-05-14T16:29:12.437Z",
+      "brandCount": 6,
+      "totalCount": 522835,
+      "enrichedTargets": 2500,
+      "catalogCount": 522835,
+      "enrichedCount": 2930,
+      "pricedCount": 2883,
+      "searchShards": 7261,
+      "cursor": 7552,
+      "mode": "brand-filter",
+      "requestedBrands": [
+        "john-deere",
+        "fendt",
+        "case-ih",
+        "new-holland",
+        "claas",
+        "krone"
+      ]
     }
   ]
 }
