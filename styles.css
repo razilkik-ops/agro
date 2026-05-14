@@ -114,6 +114,10 @@ button {
   font-size: 12px;
 }
 
+.menu-toggle {
+  display: none;
+}
+
 .main-nav {
   display: flex;
   align-items: center;
@@ -1094,10 +1098,26 @@ h3 {
     flex-wrap: wrap;
   }
 
+  .menu-toggle {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink);
+    background: transparent;
+  }
+
   .main-nav {
+    display: none;
     order: 3;
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .site-header.nav-open .main-nav {
+    display: flex;
   }
 
   .process-section,
