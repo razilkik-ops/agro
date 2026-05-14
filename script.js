@@ -125,6 +125,8 @@ const brandLogos = {
   claas: "assets/brands/cropped/claas.png",
   krone: "assets/brands/cropped/krone.png",
 };
+const brandLogoBaseUrl =
+  "https://store-77uyis7lbs.mybigcommerce.com/content/images/brands";
 
 const searchIndexUrl = "data/catalog/search/index.json";
 const catalogIndexUrl = "data/catalog/index.json";
@@ -305,12 +307,15 @@ function renderBrandList(brands = []) {
 
   brandList.innerHTML = items
     .map(
-      (brand) => `
+      (brand) => {
+        const logo = getBrandLogo(brand);
+
+        return `
         <button class="brand-row ${brand.brandSlug === activeBrandSlug ? "is-active" : ""}" type="button" data-brand-slug="${escapeHtml(brand.brandSlug)}">
-          <span class="brand-logo-wrap">
+          <span class="brand-logo-wrap ${logo ? "has-logo" : ""}">
             ${
-              brandLogos[brand.brandSlug]
-                ? `<img src="${escapeHtml(brandLogos[brand.brandSlug])}" alt="" loading="lazy" />`
+              logo
+                ? `<img src="${escapeHtml(logo)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.removeAttribute('hidden');" /><i data-lucide="tractor" hidden></i>`
                 : `<i data-lucide="tractor"></i>`
             }
           </span>
@@ -319,14 +324,22 @@ function renderBrandList(brands = []) {
             <small>${Number(brand.count || 0).toLocaleString("ru-RU")}</small>
           </span>
         </button>
-      `,
+      `;
+      },
     )
     .join("");
   renderIcons();
 }
 
-function getBrandLogo(brandSlug = "") {
-  return brandLogos[brandSlug] || "";
+function getBrandLogo(brand = "") {
+  const brandSlug =
+    typeof brand === "string" ? brand : brand?.brandSlug || normalize(brand?.brand || "").replace(/\s+/g, "-");
+
+  if (!brandSlug) {
+    return "";
+  }
+
+  return brandLogos[brandSlug] || `${brandLogoBaseUrl}/${encodeURIComponent(brandSlug)}.png`;
 }
 
 function getBrandName(brandSlug = "") {
@@ -353,7 +366,7 @@ function showBrandPage(brandSlug = "") {
   brandPage.hidden = false;
   activeBrandSlug = brandSlug;
 
-  const logo = getBrandLogo(brandSlug);
+  const logo = getBrandLogo({ brandSlug, brand: getBrandName(brandSlug) });
   brandPageLogoWrap.hidden = !logo;
   if (logo) {
     brandPageLogo.src = logo;
