@@ -699,10 +699,11 @@ function brandSlugFromName(index, brandName) {
   return item?.brandSlug || "";
 }
 
-async function getCatalogPage(index, brandSlug, page, perPage) {
+async function getCatalogPage(index, brandSlug, page, perPage, options = {}) {
   const isAll = !brandSlug || brandSlug === "all";
   const currentPage = Math.max(1, Number(page) || 1);
   const safePerPage = Math.max(1, Number(perPage) || apiPerPage);
+  const shouldEnrich = options.enrich !== false;
   const markupRate = Number(index?.metadata?.priceMarkupPercent || 20) / 100;
   const chunkSize = Number(index?.metadata?.chunkSize || 1000);
 
@@ -718,7 +719,7 @@ async function getCatalogPage(index, brandSlug, page, perPage) {
       brandSlug: brandSlugFromName(index, product.brand)
     }));
 
-    const enriched = await enrichProducts(products, markupRate);
+    const pageProducts = shouldEnrich ? await enrichProducts(products, markupRate) : products;
     return {
       metadata: {
         brandSlug: "all",
@@ -727,7 +728,7 @@ async function getCatalogPage(index, brandSlug, page, perPage) {
         count: totalCount,
         productsPerPage: safePerPage
       },
-      products: enriched
+      products: pageProducts
     };
   }
 
@@ -750,7 +751,7 @@ async function getCatalogPage(index, brandSlug, page, perPage) {
     ...product,
     brandSlug
   }));
-  const enriched = await enrichProducts(products, markupRate);
+  const pageProducts = shouldEnrich ? await enrichProducts(products, markupRate) : products;
 
   return {
     metadata: {
@@ -761,7 +762,7 @@ async function getCatalogPage(index, brandSlug, page, perPage) {
       count: totalCount,
       productsPerPage: safePerPage
     },
-    products: enriched
+    products: pageProducts
   };
 }
 
@@ -861,10 +862,12 @@ async function handleApi(req, res, url) {
     const brand = cleanText(url.searchParams.get("brand") || "all").toLowerCase();
     const page = Number(url.searchParams.get("page") || 1);
     const perPage = Number(url.searchParams.get("perPage") || apiPerPage);
+    const fast = ["1", "true", "yes"].includes(cleanText(url.searchParams.get("fast") || "").toLowerCase());
+    const enrich = cleanText(url.searchParams.get("enrich") || "") !== "0" && !fast;
 
     try {
       const index = await getCatalogIndex();
-      const pagePayload = await getCatalogPage(index, brand, page, perPage);
+      const pagePayload = await getCatalogPage(index, brand, page, perPage, { enrich });
       jsonReply(res, 200, pagePayload);
       return;
     } catch (error) {

@@ -351,6 +351,10 @@ function getBrandName(brandSlug = "") {
   return brand?.brand || fallback?.brand || "Каталог";
 }
 
+function getBrandInfo(brandSlug = "") {
+  return catalogIndex?.brands?.find((item) => item.brandSlug === brandSlug);
+}
+
 function showHomePage() {
   homePage.hidden = false;
   brandPage.hidden = true;
@@ -739,34 +743,59 @@ async function showBrandProducts(brandSlug, page = 1) {
       brand: brandSlug,
       page: String(page),
       perPage: String(productsPerPage),
+      fast: "1",
     });
-    const data = await loadFirstJson([
-      `${apiCatalogPageUrl}?${params.toString()}`,
-      `data/catalog/${brandSlug}/page-1.json`,
-    ]);
+    const data = await loadJson(`${apiCatalogPageUrl}?${params.toString()}`);
     const brandName = data.metadata?.brand || "Выбранная фирма";
     const products = (data.products || []).map(normalizePart);
-    const isApiPage = Number(data.metadata?.productsPerPage) > 0;
     renderCatalog(products, `${brandName}, каталог`, {
-      mode: isApiPage ? "brand-api" : "brand-static",
+      mode: "brand-api",
       brandSlug,
-      currentPage: isApiPage ? Number(data.metadata?.page || page) : 1,
-      totalPages: isApiPage
-        ? Number(data.metadata?.pages || 1)
-        : Math.ceil(products.length / productsPerPage),
-      totalCount: isApiPage ? Number(data.metadata?.count || products.length) : products.length,
-      pageItemsAlreadySliced: isApiPage,
+      currentPage: Number(data.metadata?.page || page),
+      totalPages: Number(data.metadata?.pages || 1),
+      totalCount: Number(data.metadata?.count || products.length),
+      pageItemsAlreadySliced: true,
     });
     scrollToCatalogResults();
   } catch {
-    const fallback = demoParts.filter((part) => part.brandSlug === brandSlug);
-    renderCatalog(fallback, "Демо-детали фирмы", {
-      mode: "brand-static",
-      brandSlug,
-      currentPage: 1,
-    });
-    scrollToCatalogResults();
+    try {
+      await showStaticBrandProducts(brandSlug, page);
+    } catch {
+      const fallback = demoParts.filter((part) => part.brandSlug === brandSlug);
+      renderCatalog(fallback, "Демо-детали фирмы", {
+        mode: "brand-static",
+        brandSlug,
+        currentPage: 1,
+      });
+      scrollToCatalogResults();
+    }
   }
+}
+
+async function showStaticBrandProducts(brandSlug, page = 1) {
+  const brandInfo = getBrandInfo(brandSlug);
+  const totalCount = Number(brandInfo?.count) || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / productsPerPage));
+  const currentPage = clampPage(page, totalPages);
+  const start = (currentPage - 1) * productsPerPage;
+  const chunkSize = Number(catalogIndex?.metadata?.chunkSize || 1000);
+  const sourcePage = Math.floor(start / chunkSize) + 1;
+  const offset = start % chunkSize;
+  const data = await loadJson(`data/catalog/${brandSlug}/page-${sourcePage}.json`);
+  const products = (data.products || [])
+    .slice(offset, offset + productsPerPage)
+    .map(normalizePart);
+  const brandName = data.metadata?.brand || brandInfo?.brand || "Выбранная фирма";
+
+  renderCatalog(products, `${brandName}, каталог`, {
+    mode: "brand-static",
+    brandSlug,
+    currentPage,
+    totalPages,
+    totalCount: totalCount || Number(data.metadata?.count || products.length),
+    pageItemsAlreadySliced: true,
+  });
+  scrollToCatalogResults();
 }
 
 function fillDetail(part) {
@@ -830,7 +859,7 @@ async function goToCatalogPage(page) {
 
   closeDetail();
 
-  if (paginationState.mode === "brand-api") {
+  if (paginationState.mode === "brand-api" || paginationState.mode === "brand-static") {
     await showBrandProducts(paginationState.brandSlug, nextPage);
     return;
   }
