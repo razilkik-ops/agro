@@ -1,23 +1,6 @@
 {
   "runs": [
     {
-      "runId": "bartsparts-2026-05-31T05-08-43-381Z",
-      "sourceName": "BartsParts sitemap + product pages",
-      "sourceUrl": "https://bartsparts.com",
-      "startedAt": "2026-05-31T05:08:43.381Z",
-      "finishedAt": "2026-05-31T05:15:32.375Z",
-      "brandCount": 250,
-      "totalCount": 1987290,
-      "enrichedTargets": 2500,
-      "catalogCount": 1987290,
-      "enrichedCount": 639995,
-      "pricedCount": 608951,
-      "searchShards": 24545,
-      "cursor": 642717,
-      "mode": "all-brands",
-      "requestedBrands": []
-    },
-    {
       "runId": "bartsparts-2026-05-31T06-16-34-346Z",
       "sourceName": "BartsParts sitemap + product pages",
       "sourceUrl": "https://bartsparts.com",
@@ -1697,6 +1680,23 @@
       "pricedCount": 981704,
       "searchShards": 25357,
       "cursor": 1055626,
+      "mode": "all-brands",
+      "requestedBrands": []
+    },
+    {
+      "runId": "bartsparts-2026-06-11T16-31-38-761Z",
+      "sourceName": "BartsParts sitemap + product pages",
+      "sourceUrl": "https://bartsparts.com",
+      "startedAt": "2026-06-11T16:31:38.761Z",
+      "finishedAt": "2026-06-11T16:38:47.554Z",
+      "brandCount": 250,
+      "totalCount": 1976216,
+      "enrichedTargets": 2500,
+      "catalogCount": 1976216,
+      "enrichedCount": 1014684,
+      "pricedCount": 984204,
+      "searchShards": 25357,
+      "cursor": 1058126,
       "mode": "all-brands",
       "requestedBrands": []
     }
